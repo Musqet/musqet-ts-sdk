@@ -10,6 +10,6 @@ Typescript SDK for react native and web clients
 
 Go to your project
 
-1. import into your project: `npm i ../musqet-ts-sdk`
+1. install via npm: `npm i Musqet/musqet-ts-sdk`
+1. or import via path into your project: `npm i ../musqet-ts-sdk`
 1. or copy the files from the dist folder: `cp ../musqet-ts-sdk/dist lib/musquet`
-1. or install via npm (if repo exists): `npm i @musqet/musqet-ts-sdk`
