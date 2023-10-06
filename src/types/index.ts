@@ -2,15 +2,11 @@ export type APIError = {
 	ok: false;
 	message: string;
 };
-export type NodeStatus =
-	| 'starting'
-	| 'running'
-	| 'stopping'
-	| 'stopped'
-	| 'provisioning'
-	| 'waiting_init'
-	| 'waiting_unlock'
-	| 'waiting_start';
+
+export type APIResponse = {
+	ok: true;
+};
+
 export type NodeStatusResponse = {
 	nodeId: string;
 	nodeUrl: string;
@@ -37,10 +33,6 @@ export type APIChallengePostResponse = {
 		token: string;
 		expires: string;
 	};
-};
-
-export type APIResponse = {
-	ok: true;
 };
 
 export type APIPriceResponse = APIResponse & {
@@ -75,6 +67,17 @@ export type APINodeStatusResponse = APIResponse & {
 		synced: boolean;
 	};
 };
+
+export type NodeStatus =
+	| 'starting'
+	| 'running'
+	| 'stopping'
+	| 'stopped'
+	| 'provisioning'
+	| 'waiting_init'
+	| 'waiting_unlock'
+	| 'waiting_start';
+
 export type NewBusinessForm = {
 	name: string;
 	address: string;
