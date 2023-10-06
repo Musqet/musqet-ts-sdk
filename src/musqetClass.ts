@@ -1,0 +1,996 @@
+import { schnorr } from '@noble/curves/secp256k1';
+import { eskdf } from '@noble/hashes/eskdf';
+import { randomBytes } from '@noble/hashes/utils';
+import { base64url, base64 } from '@scure/base';
+import { lockBox, unlockBox, bytesToHex, hexToBytes } from './cryptography';
+import {
+	APIChallengePostResponse,
+	APIChallengeResponse,
+	APIError,
+	APINewBusinessResponse,
+	APINodeStatus,
+	APIPriceResponse,
+	APIUserResponse,
+	NewBusinessForm,
+	NodeStatusResponse,
+	SettingsObject,
+	SettingsValue
+} from './types';
+
+// constants
+// Used for eskdf to make elliptic curve keys
+const KDF_MODULUS = 2n ** 252n - 27742317777372353535851937790883648493n;
+
+/*
+KDF accounts:
+  0: priv
+  1: totp
+  2: pin
+*/
+
+// Types
+
+// class
+
+export class MusqetUser {
+	// init properties
+	initiated = false;
+	publicKeyBase64URL = '';
+	subscribeStatus = (status: string) => { };
+	status = 'Ready';
+	registered = false;
+	private settings: SettingsObject = {
+		pub: new Uint8Array(0),
+		priv: new Uint8Array(0),
+		totp: new Uint8Array(0),
+		name: '',
+		email: '',
+		challengeExpires: 0,
+		bearerToken: '',
+		musqetPub: '',
+		business: '',
+		businessPub: '',
+		role: null,
+		macaroon: '',
+		nodeId: '',
+		nodeUrl: '',
+		mnemonic: '',
+		encipheredSeed: '',
+		nodePassword: ''
+	};
+	errors = [''];
+	// TODO: update with API URL
+	private API = 'http://localhost:3000/api/v1/';
+
+	constructor(env = 'dev') {
+		switch (env) {
+			case 'local':
+				this.API = 'http://localhost:3000/api/v1/';
+				break;
+			case 'dev':
+				this.API = 'https://testnet.musqet.tech/api/v1/';
+				break;
+			case 'prod':
+				this.API = 'https://app.musqet.tech/api/v1/';
+				break;
+			default:
+				this.API = 'https://testnet.musqet.tech/api/v1/';
+				break;
+		}
+	}
+
+	// Public methods
+
+	/**
+	 * Subscribe to status updates
+	 * @param {function} callback - callback function to receive status updates
+	 * @returns {void}
+	 * @example
+	 * const musqetUser = new MusqetUser();
+	 * musqetUser.subscribe((status) => {
+	 *  console.log(status);
+	 * });
+	 */
+	subscribe(callback: (status: string) => void): void {
+		this.subscribeStatus = callback;
+	}
+
+	/**
+	 * Initialize a new user from their name, email address and passphrase
+	 * @param {string} name - user's name
+	 * @param {string} email - user's email address
+	 * @param {string} passphrase - user's passphrase
+	 * @returns {Promise<boolean>} - true if successful
+	 * @example
+	 * const musqetUser = new MusqetUser();
+	 * const success = await musqetUser.signup("name", "email", "passphrase");
+	 * console.log(success);
+	 */
+	async signup(name: string, email: string, passphrase: string): Promise<boolean> {
+		try {
+			this.updateStatus('Starting signup');
+			if (!name || typeof name !== 'string') {
+				this.addError('Name is required');
+				return false;
+			}
+			if (!email || typeof email !== 'string') {
+				this.addError('Email is required');
+				return false;
+			}
+			if (!passphrase || typeof passphrase !== 'string') {
+				this.addError('Passphrase is required');
+				return false;
+			}
+			this.settings.name = name;
+			this.settings.email = email;
+			const isInit = await this.initFromPassphrase(email, passphrase);
+			if (!isInit) {
+				return false;
+			}
+			// Register the user
+			const isRegistered = await this.register();
+			if (!isRegistered) {
+				return false;
+			}
+			// complete a challenge
+			if (!this.checkChallengeExpiry()) {
+				const challengeCompleted = await this.completeChallenge();
+				if (!challengeCompleted) {
+					this.addError('Challenge not completed');
+					return false;
+				}
+			}
+			// backup the user's settings
+			this.updateStatus('New user created');
+			this.updateStatus('Ready');
+			return true;
+		} catch (err) {
+			this.addError(`${err}`);
+			return false;
+		}
+	}
+
+	/**
+	 * Method to initialize an existing user by generating their private key
+	 * @param {string} email - user's email address
+	 * @param {string} passphrase - user's passphrase
+	 * @returns {Promise<boolean>} - true if successful
+	 * @example
+	 * const musqetUser = new MusqetUser();
+	 * const success = await musqetUser.initFromPassphrase("email", "passphrase");
+	 * console.log(success);
+	 * // true
+	 */
+	async login(email: string, passphrase: string): Promise<boolean> {
+		this.updateStatus('Starting login');
+		try {
+			if (!email) {
+				this.addError('Email is required');
+				return false;
+			}
+			if (!passphrase) {
+				this.addError('Passphrase is required');
+				return false;
+			}
+			const isInit = await this.initFromPassphrase(email, passphrase);
+			if (!isInit) {
+				return false;
+			}
+
+			// complete a challenge
+			const challengeCompleted = await this.completeChallenge();
+			if (!challengeCompleted) {
+				return false;
+			}
+			// fetch user's settings from server
+			const response = await fetch(`${this.API}u/${this.publicKeyBase64URL}`, {
+				headers: {
+					Authorization: `Bearer ${this.settings.bearerToken}`
+				}
+			});
+			const json: APIError | APIUserResponse = await response.json();
+			if (isAPIError(json)) {
+				this.addError(json.message);
+				return false;
+			}
+			const { backup } = json.data;
+			const decryptedSettings = this.decryptSettings(this.settings.priv, backup);
+			this.settings = {
+				...decryptedSettings,
+				challengeExpires: this.settings.challengeExpires,
+				bearerToken: this.settings.bearerToken
+			};
+			this.updateStatus('User logged in');
+			this.updateStatus('Ready');
+			return true;
+		} catch (err) {
+			this.addError(`${err}`);
+			return false;
+		}
+	}
+
+	/**
+	 * Automatically log in the user from their private key stored in secure storage
+	 */
+	async autoLogin(): Promise<boolean> {
+		try {
+			// TODO - this will depend on the secure storage implementation
+			// for now, just return false
+			return false;
+			return true;
+		} catch (err) {
+			this.addError(`${err}`);
+			return false;
+		}
+	}
+
+	/**
+	 * Delete the user from the server
+	 * Used for testing only and tidying up test users
+	 * @returns {Promise<boolean>} - true if successful
+	 * @example
+	 * const musqetUser = new MusqetUser();
+	 * const success = await musqetUser.deleteUser();
+	 * console.log(success);
+	 * // true
+	 */
+	async deleteUser(): Promise<boolean> {
+		// todo delete any businesses that the user is the only merchant of
+		const response = await fetch(`${this.API}u/${this.publicKeyBase64URL}`, {
+			method: 'DELETE',
+			headers: {
+				Authorization: `Bearer ${this.settings.bearerToken}`
+			}
+		});
+		const json: APIError | { ok: true } = await response.json();
+		if (isAPIError(json)) {
+			this.addError(json.message);
+			return false;
+		}
+		return true;
+	}
+
+	/**
+	 * Backup the user's settings to the server
+	 * @returns {Promise<boolean>} - true if successful
+	 * @example
+	 * const musqetUser = new MusqetUser();
+	 * const success = await musqetUser.backup();
+	 * console.log(success);
+	 * // true
+	 */
+	async backup(): Promise<boolean> {
+		if (!this.initiated) {
+			this.addError('User is not initialized');
+			return false;
+		}
+		if (!this.settings.priv.length) {
+			this.addError('Private key is required');
+			return false;
+		}
+		this.updateStatus('Backing up');
+		try {
+			if (!this.checkChallengeExpiry()) {
+				const challengeCompleted = await this.completeChallenge();
+				if (!challengeCompleted) {
+					throw 'Challenge not completed';
+				}
+			}
+			const payload = {
+				name: this.settings.name,
+				backup: this.settingsToEncryptedHex(this.settings.priv)
+			};
+			const response = await fetch(`${this.API}u/${this.publicKeyBase64URL}`, {
+				method: 'PUT',
+				headers: {
+					'Content-Type': 'application/json',
+					Authorization: `Bearer ${this.settings.bearerToken}`
+				},
+				body: JSON.stringify(payload)
+			});
+			const json: APIError | APIUserResponse = await response.json();
+			if (isAPIError(json)) {
+				throw json.message;
+			}
+			return true;
+		} catch (err) {
+			this.addError(`${err}`);
+			return false;
+		}
+	}
+
+	hasNode() {
+		return !!this.settings.nodeId;
+	}
+
+	/**
+	 * Fetch the current BTC price from the server for fiat conversion on the client
+	 * @param {string} currency - currency ticker, eg USD or EUR or GBP
+	 * @returns {Promise<{price: string, symbol: string}>} - price (eg 58000.00) and symbol (eg $)
+	 */
+	async getPrice(currency: string): Promise<{ price: string; symbol: string }> {
+		try {
+			if (!this.checkChallengeExpiry()) {
+				const challengeCompleted = await this.completeChallenge();
+				if (!challengeCompleted) {
+					throw 'Challenge not completed';
+				}
+			}
+			this.updateStatus('Fetching price');
+			if (!currency || typeof currency !== 'string') {
+				throw 'Currency is required';
+			}
+			const response = await fetch(`${this.API}price?currency=${currency}`, {
+				headers: {
+					Authorization: `Bearer ${this.settings.bearerToken}`
+				}
+			});
+			const json: APIError | APIPriceResponse = await response.json();
+			if (isAPIError(json)) {
+				throw json.message;
+			}
+			const { price, symbol } = json.data;
+			this.updateStatus('Price fetched');
+			this.updateStatus('Ready');
+			return { price, symbol };
+		} catch (err) {
+			throw err;
+		}
+	}
+
+	/**
+	 * Register a new business
+	 * @param {NewBusinessForm} businessFormData - form data for the new business
+	 * @returns {Promise<boolean>} - true if successful
+	 * @example
+	 * const musqetUser = new MusqetUser();
+	 * const success = await musqetUser.registerBusiness({
+	 * name: 'Alice',
+	 * address: '1 Test Street, London, SW1 1AA, UK',
+	 * businessName: 'Test Business Name',
+	 * phone: '0123456789',
+	 * email: 'alice@example.com',
+	 * annualRevenue: 1000000000,
+	 * website: 'https://example.com',
+	 * channelSize: 1000000,
+	 * });
+	 * console.log(success);
+	 * // true
+	 */
+	async registerBusiness(businessFormData: NewBusinessForm): Promise<boolean> {
+		try {
+			if (!this.checkChallengeExpiry()) {
+				const challengeCompleted = await this.completeChallenge();
+				if (!challengeCompleted) {
+					throw 'Challenge not completed';
+				}
+			}
+			this.updateStatus('Registering business');
+			const response = await fetch(`${this.API}b/new`, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					Authorization: `Bearer ${this.settings.bearerToken}`
+				},
+				body: JSON.stringify(businessFormData)
+			});
+			const json: APIError | APINewBusinessResponse = await response.json();
+			if (isAPIError(json)) {
+				throw json.message;
+			}
+			const { businessId } = json.data;
+			this.settings.business = businessId;
+			this.updateStatus('Business registered');
+			this.updateStatus('Ready');
+			return true;
+		} catch (err) {
+			this.addError(`${err}`);
+			return false;
+		}
+	}
+
+	/**
+	 * Fetch the current status of a business's lightning node
+	 * @returns {Promise<NodeStatusResponse>} - node status
+	 * @example
+	 * const musqetUser = new MusqetUser();
+	 * const status = await musqetUser.getNodeStatus();
+	 * console.log(status);
+	 * // {
+	 * //   nodeId: 'nodeId',
+	 * //   nodeUrl: 'nodeUrl',
+	 * //   status: 'starting',
+	 * //   update: false,
+	 * //   synced: false,
+	 * //   blockHeight: 0,
+	 * //   blockTip: 8000,
+	 * // }
+	 */
+	async getNodeStatus(): Promise<NodeStatusResponse> {
+		try {
+			const r = await fetch(`${this.API}b/${this.settings.business}/ln/status`, {
+				headers: {
+					Authorization: `Bearer ${this.settings.bearerToken}`
+				}
+			});
+			const json: APIError | APINodeStatus = await r.json();
+			if (isAPIError(json)) {
+				throw json.message;
+			}
+			// set a flag to backup if settings are changed
+			let settingsChanged = false;
+			if (!this.settings.nodeUrl) {
+				this.settings.nodeUrl = json.data.nodeUrl;
+				settingsChanged = true;
+			}
+			if (!this.settings.nodeId) {
+				this.settings.nodeId = json.data.nodeId;
+				settingsChanged = true;
+			}
+			// if the node is waiting unlock, unlock it
+			if (json.data.status === 'waiting_unlock') {
+				const unlockResponse = await fetch(
+					`https://${this.settings.nodeUrl}:8080/v1/unlockwallet`,
+					{
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json'
+						},
+						body: JSON.stringify({
+							wallet_password: this.settings.nodePassword,
+							stateless_init: true
+						})
+					}
+				);
+				if (!unlockResponse.ok) {
+					throw 'Node unlock failed';
+				}
+			}
+			if (settingsChanged) await this.backup();
+			return json.data;
+		} catch (err) {
+			this.addError(`${err}`);
+			return {
+				nodeId: '',
+				nodeUrl: '',
+				status: 'stopped',
+				update: false,
+				synced: false,
+				blockHeight: 0,
+				blockTip: 0
+			};
+		}
+	}
+
+	/**
+	 * Initialize a new lightning node for a business
+	 * @returns {Promise<boolean>} - true if successful
+	 * @example
+	 * const musqetUser = new MusqetUser();
+	 * const success = await musqetUser.initNode();
+	 * console.log(success);
+	 * // true
+	 */
+	async initNode(): Promise<boolean> {
+		try {
+			// check there is a node
+			if (!this.settings.nodeId || !this.settings.nodeUrl) {
+				throw 'No node found to initialize';
+			}
+			this.updateStatus('Initializing lightning node');
+			const response4 = await fetch(`https://${this.settings.nodeUrl}:8080/v1/genseed`);
+			const json4: {
+				cipher_seed_mnemonic: string[];
+				enciphered_seed: string;
+			} = await response4.json();
+			this.settings.mnemonic = json4.cipher_seed_mnemonic.join(' ');
+			this.settings.encipheredSeed = json4.enciphered_seed;
+			this.settings.nodePassword = base64.encode(randomBytes(32));
+			const response5 = await fetch(`https://${this.settings.nodeUrl}:8080/v1/initwallet`, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({
+					wallet_password: this.settings.nodePassword,
+					cipher_seed_mnemonic: json4.cipher_seed_mnemonic,
+					stateless_init: true
+				})
+			});
+			const json5: { admin_macaroon: string } = await response5.json();
+			this.settings.macaroon = bytesToHex(base64.decode(json5.admin_macaroon));
+			this.updateStatus('Lightning node initialized');
+			this.updateStatus('Saving settings');
+			const saved = await this.backup();
+			if (!saved) throw 'Settings not saved';
+			this.updateStatus('Settings saved');
+			// bake a macaroon for musqet
+			this.updateStatus('Baking macaroon');
+			const invoicePermissions = {
+				permissions: [
+					{
+						entity: 'invoices',
+						action: 'read'
+					},
+					{
+						entity: 'invoices',
+						action: 'write'
+					},
+					{
+						entity: 'info',
+						action: 'read'
+					},
+					{
+						entity: 'info',
+						action: 'write'
+					},
+					{
+						entity: 'address',
+						action: 'read'
+					},
+					{
+						entity: 'address',
+						action: 'write'
+					},
+					{
+						entity: 'onchain',
+						action: 'read'
+					}
+				]
+			};
+			let macaroon = '',
+				counter = 0;
+			while (!macaroon) {
+				counter++;
+				// pause
+				await new Promise((resolve) => setTimeout(resolve, 1000));
+				const response6 = await fetch(`https://${this.settings.nodeUrl}:8080/v1/macaroon`, {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						'Grpc-Metadata-Macaroon': this.settings.macaroon
+					},
+					body: JSON.stringify(invoicePermissions)
+				});
+				const json6: { macaroon: string } = await response6.json();
+				macaroon = json6.macaroon ?? '';
+				if (counter > 15 && !macaroon) {
+					throw 'Macaroon not baked';
+				}
+			}
+			// post the macaroon to the server
+			const response7 = await fetch(`${this.API}b/${this.settings.business}/ln/macaroon`, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					Authorization: `Bearer ${this.settings.bearerToken}`
+				},
+				body: JSON.stringify({
+					macaroon
+				})
+			});
+			const json7: APIError | { ok: true } = await response7.json();
+			if (isAPIError(json7)) {
+				throw json7.message;
+			}
+			this.updateStatus('Macaroon baked');
+			await this.backup();
+			// todo connect node to musqet node as a peer
+			return true;
+		} catch (err) {
+			this.addError(`${err}`);
+			return false;
+		}
+	}
+
+	/**
+	 * Stop the lightning node
+	 * @returns {Promise<boolean>} - true if successful
+	 * @example
+	 * const musqetUser = new MusqetUser();
+	 * const success = await musqetUser.stopNode();
+	 * console.log(success);
+	 * // true
+	 */
+	async stopNode(): Promise<boolean> {
+		try {
+			// check there is a node
+			if (!this.settings.nodeId || !this.settings.nodeUrl) {
+				throw 'No node found to stop';
+			}
+			this.updateStatus('Stopping lightning node');
+			const response = await fetch(`${this.API}b/${this.settings.business}/ln/stopNode`, {
+				method: 'GET',
+				headers: {
+					Authorization: `Bearer ${this.settings.bearerToken}`
+				}
+			});
+			const json: APIError | { ok: true } = await response.json();
+			if (isAPIError(json)) {
+				throw json.message;
+			}
+			this.updateStatus('Lightning node stopped');
+			return true;
+		} catch (err) {
+			this.addError(`${err}`);
+			return false;
+		}
+	}
+
+	/**
+	 * Start the lightning node
+	 * @returns {Promise<boolean>} - true if successful
+	 * @example
+	 * const musqetUser = new MusqetUser();
+	 * const success = await musqetUser.startNode();
+	 * console.log(success);
+	 * // true
+	 */
+	async startNode(): Promise<boolean> {
+		try {
+			// check there is a node
+			if (!this.settings.nodeId || !this.settings.nodeUrl) {
+				throw 'No node found to start';
+			}
+			this.updateStatus('Starting lightning node');
+			const response = await fetch(`${this.API}b/${this.settings.business}/ln/startNode`, {
+				method: 'GET',
+				headers: {
+					Authorization: `Bearer ${this.settings.bearerToken}`
+				}
+			});
+			const json: APIError | { ok: true } = await response.json();
+			if (isAPIError(json)) {
+				throw json.message;
+			}
+			this.updateStatus('Lightning node started');
+			return true;
+		} catch (err) {
+			this.addError(`${err}`);
+			return false;
+		}
+	}
+
+	// TODO: Remove this method It's too dangerous
+	async delNodes(): Promise<boolean> {
+		const r = await fetch(`${this.API}temp/del`, {
+			method: 'GET'
+		});
+		return true;
+	}
+
+	//
+
+	// Start day
+	async startDay(): Promise<boolean> {
+		// TODO: implement
+		return Promise.resolve(false);
+	}
+
+	// End day
+	async endDay(): Promise<boolean> {
+		// TODO: implement
+		return Promise.resolve(false);
+	}
+
+	// Start shift
+	async startShift(): Promise<boolean> {
+		// TODO: implement
+		return Promise.resolve(false);
+	}
+
+	// End shift
+	async endShift(): Promise<boolean> {
+		// TODO: implement
+		return Promise.resolve(false);
+	}
+
+	// Emergency rebalance
+	async emergencyRebalance(): Promise<boolean> {
+		// TODO: implement
+		return Promise.resolve(false);
+	}
+
+	// Approve a manager
+	async approveManager(): Promise<boolean> {
+		// TODO: implement
+		return Promise.resolve(false);
+	}
+
+	// Remove a manager
+	async removeManager(): Promise<boolean> {
+		// TODO: implement
+		return Promise.resolve(false);
+	}
+
+	// Approve a cashier
+	async approveCashier(): Promise<boolean> {
+		// TODO: implement
+		return Promise.resolve(false);
+	}
+
+	// Remove a cashier
+	async removeCashier(): Promise<boolean> {
+		// TODO: implement
+		return Promise.resolve(false);
+	}
+
+	// Approve a terminal
+	async addTerminal(): Promise<boolean> {
+		// TODO: implement
+		return Promise.resolve(false);
+	}
+
+	// Remove a terminal
+	async removeTerminal(): Promise<boolean> {
+		// TODO: implement
+		return Promise.resolve(false);
+	}
+
+	// Get sales data
+	async getSalesData(): Promise<unknown> {
+		// TODO: implement
+		// Not sure what this will look like yet
+		return Promise.resolve({
+			sales: [],
+			total: 0,
+			currency: 'BTC'
+		});
+	}
+
+	// Private methods
+
+	/**
+	 * Register a new user on the server after initializing a new user
+	 *
+	 */
+	private async register(): Promise<boolean> {
+		try {
+			if (!this.initiated) {
+				throw 'User is not initialized';
+			}
+			if (!this.settings.email) {
+				throw 'Email is required';
+			}
+			if (!this.settings.pub.length || !this.publicKeyBase64URL) {
+				throw 'Public key is required';
+			}
+			if (!this.settings.name) {
+				throw 'Name is required';
+			}
+			this.updateStatus('Registering New User');
+			const response = await fetch(`${this.API}u/new`, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({
+					pubkey: this.publicKeyBase64URL,
+					email: this.settings.email,
+					name: this.settings.name
+				})
+			});
+			const json = await response.json();
+			if (!json.ok) {
+				throw json.message;
+			}
+			this.registered = true;
+			this.updateStatus('User Registered');
+			this.updateStatus('Ready');
+			return true;
+		} catch (err) {
+			this.addError(`${err}`);
+			return false;
+		}
+	}
+
+	/**
+	 * Initialize a new user from an email address and passphrase
+	 * @param {string} identifier - email
+	 * @param {string} passphrase - passphrase
+	 * @returns {Promise<boolean>} - true if successful
+	 * @private
+	 */
+	private async initFromPassphrase(identifier: string, passphrase: string): Promise<boolean> {
+		try {
+			if (!passphrase) {
+				throw 'Passphrase is required';
+			}
+			if (!identifier) {
+				throw 'Identifier is required';
+			}
+			// TODO: require a minimum length for passphrase
+			this.settings.email = identifier;
+			this.updateStatus('Generating Keys');
+			const kdf = await eskdf(`MUSQET_${identifier}`, `MUSQET_${passphrase}`);
+			this.settings.priv = kdf.deriveChildKey('ecc', 0, {
+				modulus: KDF_MODULUS
+			});
+			this.settings.totp = kdf.deriveChildKey('ecc', 1, {
+				modulus: KDF_MODULUS
+			});
+			this.settings.pub = schnorr.getPublicKey(this.settings.priv);
+			this.publicKeyBase64URL = base64url.encode(this.settings.pub);
+			this.initiated = true;
+			this.updateStatus('Ready');
+		} catch (err) {
+			this.addError(`${err}`);
+		}
+		return this.initiated;
+	}
+
+	/**
+	 * Check if the user has a valid challenge
+	 * @returns {boolean} - true if the user has a valid challenge
+	 */
+	private checkChallengeExpiry(): boolean {
+		this.updateStatus('Checking challenge expiry');
+		if (!this.settings.challengeExpires) return false;
+		const now = Date.now();
+		this.updateStatus('Ready');
+		return now < this.settings.challengeExpires;
+	}
+
+	/**
+	 * Encrypt the user's settings using an encryption key
+	 * @param {Uint8Array} encryptionKey - key to encrypt the settings
+	 * @returns {string} - encrypted settings in hex
+	 */
+	private settingsToEncryptedHex(encryptionKey: Uint8Array): string {
+		this.updateStatus('Encrypting settings');
+		try {
+			const settingsString = JSON.stringify(this.settings, (_key: string, value: SettingsValue) => {
+				if (value instanceof Uint8Array) {
+					return `<U8>${value.toString()}`;
+				}
+				if (typeof value === 'number') {
+					return `${value}`;
+				}
+				return value;
+			});
+			const settingsBytes = new TextEncoder().encode(settingsString);
+			const encryptedBytes = lockBox(encryptionKey, settingsBytes);
+			const encryptedHex = bytesToHex(encryptedBytes);
+			this.updateStatus('Settings encrypted');
+			this.updateStatus('Ready');
+			return encryptedHex;
+		} catch (err) {
+			this.addError(`${err}`);
+			throw err;
+		}
+	}
+
+	/**
+	 * Decrypt the user's settings using an encryption key
+	 * @param {Uint8Array} key - a key to decrypt the settings
+	 * @param {string} musqetEncryptedStorage - encrypted settings in hex string
+	 * @returns {SettingsObject}
+	 * @private
+	 */
+	private decryptSettings(key: Uint8Array, musqetEncryptedStorage: string): SettingsObject {
+		this.updateStatus('Decrypting settings');
+		try {
+			if (this.settings.priv.length === 0) throw 'Private key is required';
+			if (!musqetEncryptedStorage || typeof musqetEncryptedStorage !== 'string')
+				throw 'Encrypted settings are required';
+			const encryptedBytes = hexToBytes(musqetEncryptedStorage);
+			const settingsBytes = unlockBox(key, encryptedBytes);
+			const settingsString = new TextDecoder().decode(settingsBytes);
+			const settings: SettingsObject = JSON.parse(settingsString, (key: string, value: string) => {
+				if (key && typeof value === 'string' && value.startsWith('<U8>')) {
+					const arr: number[] = value
+						.replace('<U8>', '')
+						.split(',')
+						.map((s) => parseInt(s));
+					return new Uint8Array(arr);
+				}
+				if (key && key === 'challengeExpires') {
+					return parseInt(value);
+				}
+				return value;
+			});
+			this.updateStatus('Settings decrypted');
+			this.updateStatus('Ready');
+			return settings;
+		} catch (err) {
+			this.addError(`${err}`);
+			throw err;
+		}
+	}
+
+	/**
+	 * Add an error to the settings object
+	 * @param {string} error - error message
+	 * @returns {void}
+	 * @private
+	 */
+	private addError(error: string): void {
+		const e = new Error();
+		this.errors.push(`${error} - ${new Date().toISOString()} - ${e.stack}`);
+		if (this.errors.length > 10) {
+			this.errors.shift();
+		}
+		this.updateStatus('Error');
+	}
+
+	/**
+	 * fetch a nonce from the server, sign it, and send it back to the server
+	 * the server will assign a cookie to authorize the user for 1 hour.
+	 * Incorrect challenges will incur an exponential back off and the server will
+	 * return a 429 error.
+	 * @returns {Promise<boolean>} - true if successful
+	 * @private
+	 */
+	private async completeChallenge(): Promise<boolean> {
+		// if (!this.registered) return false;
+		if (!this.settings.email) {
+			this.addError('Email is required');
+			return false;
+		}
+		if (!this.settings.pub.length) {
+			this.addError('Public key is required');
+			return false;
+		}
+		try {
+			this.updateStatus('Starting challenge');
+			const response1 = await fetch(
+				`${this.API}challenge?email=${
+					this.settings.email
+				}&pubkey=${this.publicKeyBase64URL.replaceAll('=', '~')}`
+			);
+			const json1: APIError | APIChallengeResponse = await response1.json();
+			if (isAPIError(json1)) {
+				this.addError(json1.message);
+				return false;
+			}
+			if (!json1.data.nonce) {
+				this.addError('Nonce not received');
+				return false;
+			}
+			const nonce = json1.data.nonce;
+			if (!nonce) {
+				this.addError('Nonce not received');
+				return false;
+			}
+			this.updateStatus('Signing challenge');
+			const nonceU8 = base64url.decode(nonce);
+			const signatureU8 = schnorr.sign(nonceU8, this.settings.priv);
+			const signature = base64url.encode(signatureU8);
+			this.updateStatus('Sending challenge');
+			const response2 = await fetch(`${this.API}challenge`, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({
+					pubkey: this.publicKeyBase64URL,
+					signature,
+					nonce
+				})
+			});
+			const json2: APIError | APIChallengePostResponse = await response2.json();
+			if (isAPIError(json2)) {
+				this.addError(json2.message);
+				return false;
+			}
+			this.settings.challengeExpires = new Date(json2.data.expires).getTime() - 60000;
+			this.settings.bearerToken = json2.data.token;
+			this.updateStatus('Challenge completed');
+			this.updateStatus('Ready');
+			return true;
+		} catch (err) {
+			this.addError(`${err}`);
+			return false;
+		}
+	}
+
+	private updateStatus(status: string) {
+		this.status = status;
+		this.subscribeStatus(status);
+	}
+}
+
+// helpers
+const isAPIError = (obj: any): obj is APIError => {
+	return obj.ok === false && obj.message !== undefined;
+};
