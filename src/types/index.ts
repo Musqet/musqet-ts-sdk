@@ -1,3 +1,5 @@
+export type Environment = 'prod' | 'dev' | 'local';
+
 export type APIError = {
 	ok: false;
 	message: string;

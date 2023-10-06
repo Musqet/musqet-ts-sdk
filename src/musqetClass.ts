@@ -11,15 +11,15 @@ import {
 	APINodeStatus,
 	APIPriceResponse,
 	APIUserResponse,
+	Environment,
 	NewBusinessForm,
 	NodeStatusResponse,
 	SettingsObject,
 	SettingsValue
 } from './types';
-
-// constants
-// Used for eskdf to make elliptic curve keys
-const KDF_MODULUS = 2n ** 252n - 27742317777372353535851937790883648493n;
+import { NODE_STATUS, PREFIX, STATUS } from './const/strings';
+import { KDF_MODULUS, ONE_MINUTE_MILLIS } from './const/numbers';
+import { ENVIRONMENT } from './const/envs';
 
 /*
 KDF accounts:
@@ -37,7 +37,7 @@ export class MusqetUser {
 	initiated = false;
 	publicKeyBase64URL = '';
 	subscribeStatus = (status: string) => {};
-	status = 'Ready';
+	status = STATUS.READY;
 	registered = false;
 	private settings: SettingsObject = {
 		pub: new Uint8Array(0),
@@ -62,15 +62,15 @@ export class MusqetUser {
 	// TODO: update with API URL
 	private API = 'http://localhost:3000/api/v1/';
 
-	constructor(env = 'dev') {
+	constructor(env: Environment = 'dev') {
 		switch (env) {
-			case 'local':
+			case ENVIRONMENT.LOCAL:
 				this.API = 'http://localhost:3000/api/v1/';
 				break;
-			case 'dev':
+			case ENVIRONMENT.DEV:
 				this.API = 'https://testnet.musqet.tech/api/v1/';
 				break;
-			case 'prod':
+			case ENVIRONMENT.PROD:
 				this.API = 'https://app.musqet.tech/api/v1/';
 				break;
 			default:
@@ -108,7 +108,7 @@ export class MusqetUser {
 	 */
 	async signup(name: string, email: string, passphrase: string): Promise<boolean> {
 		try {
-			this.updateStatus('Starting signup');
+			this.updateStatus(STATUS.STARTING);
 			if (!name || typeof name !== 'string') {
 				this.addError('Name is required');
 				return false;
@@ -141,8 +141,8 @@ export class MusqetUser {
 				}
 			}
 			// backup the user's settings
-			this.updateStatus('New user created');
-			this.updateStatus('Ready');
+			this.updateStatus(STATUS.USER_CREATED);
+			this.updateStatus(STATUS.READY);
 			return true;
 		} catch (err) {
 			this.addError(`${err}`);
@@ -162,7 +162,7 @@ export class MusqetUser {
 	 * // true
 	 */
 	async login(email: string, passphrase: string): Promise<boolean> {
-		this.updateStatus('Starting login');
+		this.updateStatus(STATUS.LOGIN);
 		try {
 			if (!email) {
 				this.addError('Email is required');
@@ -200,8 +200,8 @@ export class MusqetUser {
 				challengeExpires: this.settings.challengeExpires,
 				bearerToken: this.settings.bearerToken
 			};
-			this.updateStatus('User logged in');
-			this.updateStatus('Ready');
+			this.updateStatus(STATUS.LOGGED_IN);
+			this.updateStatus(STATUS.READY);
 			return true;
 		} catch (err) {
 			this.addError(`${err}`);
@@ -268,7 +268,7 @@ export class MusqetUser {
 			this.addError('Private key is required');
 			return false;
 		}
-		this.updateStatus('Backing up');
+		this.updateStatus(STATUS.BACKING_UP);
 		try {
 			if (!this.checkChallengeExpiry()) {
 				const challengeCompleted = await this.completeChallenge();
@@ -309,33 +309,29 @@ export class MusqetUser {
 	 * @returns {Promise<{price: string, symbol: string}>} - price (eg 58000.00) and symbol (eg $)
 	 */
 	async getPrice(currency: string): Promise<{ price: string; symbol: string }> {
-		try {
-			if (!this.checkChallengeExpiry()) {
-				const challengeCompleted = await this.completeChallenge();
-				if (!challengeCompleted) {
-					throw 'Challenge not completed';
-				}
+		if (!this.checkChallengeExpiry()) {
+			const challengeCompleted = await this.completeChallenge();
+			if (!challengeCompleted) {
+				throw 'Challenge not completed';
 			}
-			this.updateStatus('Fetching price');
-			if (!currency || typeof currency !== 'string') {
-				throw 'Currency is required';
-			}
-			const response = await fetch(`${this.API}price?currency=${currency}`, {
-				headers: {
-					Authorization: `Bearer ${this.settings.bearerToken}`
-				}
-			});
-			const json: APIError | APIPriceResponse = await response.json();
-			if (isAPIError(json)) {
-				throw json.message;
-			}
-			const { price, symbol } = json.data;
-			this.updateStatus('Price fetched');
-			this.updateStatus('Ready');
-			return { price, symbol };
-		} catch (err) {
-			throw err;
 		}
+		this.updateStatus(STATUS.FETCH_PRICE);
+		if (!currency || typeof currency !== 'string') {
+			throw 'Currency is required';
+		}
+		const response = await fetch(`${this.API}price?currency=${currency}`, {
+			headers: {
+				Authorization: `Bearer ${this.settings.bearerToken}`
+			}
+		});
+		const json: APIError | APIPriceResponse = await response.json();
+		if (isAPIError(json)) {
+			throw json.message;
+		}
+		const { price, symbol } = json.data;
+		this.updateStatus(STATUS.FETCH_PRICE);
+		this.updateStatus(STATUS.PRICE_FETCHED);
+		return { price, symbol };
 	}
 
 	/**
@@ -365,7 +361,7 @@ export class MusqetUser {
 					throw 'Challenge not completed';
 				}
 			}
-			this.updateStatus('Registering business');
+			this.updateStatus(STATUS.REGISTER_BUSINESS);
 			const response = await fetch(`${this.API}b/new`, {
 				method: 'POST',
 				headers: {
@@ -380,8 +376,8 @@ export class MusqetUser {
 			}
 			const { businessId } = json.data;
 			this.settings.business = businessId;
-			this.updateStatus('Business registered');
-			this.updateStatus('Ready');
+			this.updateStatus(STATUS.BUSINESS_REGISTERED);
+			this.updateStatus(STATUS.READY);
 			return true;
 		} catch (err) {
 			this.addError(`${err}`);
@@ -428,7 +424,7 @@ export class MusqetUser {
 				settingsChanged = true;
 			}
 			// if the node is waiting unlock, unlock it
-			if (json.data.status === 'waiting_unlock') {
+			if (json.data.status === NODE_STATUS.WAITING_UNLOCK) {
 				const unlockResponse = await fetch(
 					`https://${this.settings.nodeUrl}:8080/v1/unlockwallet`,
 					{
@@ -453,7 +449,7 @@ export class MusqetUser {
 			return {
 				nodeId: '',
 				nodeUrl: '',
-				status: 'stopped',
+				status: NODE_STATUS.STOPPED,
 				update: false,
 				synced: false,
 				blockHeight: 0,
@@ -477,7 +473,7 @@ export class MusqetUser {
 			if (!this.settings.nodeId || !this.settings.nodeUrl) {
 				throw 'No node found to initialize';
 			}
-			this.updateStatus('Initializing lightning node');
+			this.updateStatus(STATUS.INIT_NODE);
 			const response4 = await fetch(`https://${this.settings.nodeUrl}:8080/v1/genseed`);
 			const json4: {
 				cipher_seed_mnemonic: string[];
@@ -499,13 +495,13 @@ export class MusqetUser {
 			});
 			const json5: { admin_macaroon: string } = await response5.json();
 			this.settings.macaroon = bytesToHex(base64.decode(json5.admin_macaroon));
-			this.updateStatus('Lightning node initialized');
-			this.updateStatus('Saving settings');
+			this.updateStatus(STATUS.NODE_INITIALIZED);
+			this.updateStatus(STATUS.SAVING);
 			const saved = await this.backup();
 			if (!saved) throw 'Settings not saved';
-			this.updateStatus('Settings saved');
+			this.updateStatus(STATUS.SAVED);
 			// bake a macaroon for musqet
-			this.updateStatus('Baking macaroon');
+			this.updateStatus(STATUS.BAKING);
 			const invoicePermissions = {
 				permissions: [
 					{
@@ -573,7 +569,7 @@ export class MusqetUser {
 			if (isAPIError(json7)) {
 				throw json7.message;
 			}
-			this.updateStatus('Macaroon baked');
+			this.updateStatus(STATUS.BAKED);
 			await this.backup();
 			// todo connect node to musqet node as a peer
 			return true;
@@ -598,7 +594,7 @@ export class MusqetUser {
 			if (!this.settings.nodeId || !this.settings.nodeUrl) {
 				throw 'No node found to stop';
 			}
-			this.updateStatus('Stopping lightning node');
+			this.updateStatus(STATUS.STOPPING_NODE);
 			const response = await fetch(`${this.API}b/${this.settings.business}/ln/stopNode`, {
 				method: 'GET',
 				headers: {
@@ -609,7 +605,6 @@ export class MusqetUser {
 			if (isAPIError(json)) {
 				throw json.message;
 			}
-			this.updateStatus('Lightning node stopped');
 			return true;
 		} catch (err) {
 			this.addError(`${err}`);
@@ -632,7 +627,7 @@ export class MusqetUser {
 			if (!this.settings.nodeId || !this.settings.nodeUrl) {
 				throw 'No node found to start';
 			}
-			this.updateStatus('Starting lightning node');
+			this.updateStatus(STATUS.STARTING_NODE);
 			const response = await fetch(`${this.API}b/${this.settings.business}/ln/startNode`, {
 				method: 'GET',
 				headers: {
@@ -643,7 +638,7 @@ export class MusqetUser {
 			if (isAPIError(json)) {
 				throw json.message;
 			}
-			this.updateStatus('Lightning node started');
+			this.updateStatus(STATUS.NODE_STARTED);
 			return true;
 		} catch (err) {
 			this.addError(`${err}`);
@@ -758,7 +753,7 @@ export class MusqetUser {
 			if (!this.settings.name) {
 				throw 'Name is required';
 			}
-			this.updateStatus('Registering New User');
+			this.updateStatus(STATUS.REGISTER_USER);
 			const response = await fetch(`${this.API}u/new`, {
 				method: 'POST',
 				headers: {
@@ -775,8 +770,8 @@ export class MusqetUser {
 				throw json.message;
 			}
 			this.registered = true;
-			this.updateStatus('User Registered');
-			this.updateStatus('Ready');
+			this.updateStatus(STATUS.USER_REGISTERED);
+			this.updateStatus(STATUS.READY);
 			return true;
 		} catch (err) {
 			this.addError(`${err}`);
@@ -801,8 +796,8 @@ export class MusqetUser {
 			}
 			// TODO: require a minimum length for passphrase
 			this.settings.email = identifier;
-			this.updateStatus('Generating Keys');
-			const kdf = await eskdf(`MUSQET_${identifier}`, `MUSQET_${passphrase}`);
+			this.updateStatus(STATUS.GENERATING_KEYS);
+			const kdf = await eskdf(`${PREFIX.MUSQET}_${identifier}`, `${PREFIX.MUSQET}_${passphrase}`);
 			this.settings.priv = kdf.deriveChildKey('ecc', 0, {
 				modulus: KDF_MODULUS
 			});
@@ -812,7 +807,7 @@ export class MusqetUser {
 			this.settings.pub = schnorr.getPublicKey(this.settings.priv);
 			this.publicKeyBase64URL = base64url.encode(this.settings.pub);
 			this.initiated = true;
-			this.updateStatus('Ready');
+			this.updateStatus(STATUS.READY);
 		} catch (err) {
 			this.addError(`${err}`);
 		}
@@ -824,10 +819,10 @@ export class MusqetUser {
 	 * @returns {boolean} - true if the user has a valid challenge
 	 */
 	private checkChallengeExpiry(): boolean {
-		this.updateStatus('Checking challenge expiry');
+		this.updateStatus(STATUS.CHECK_EXPIRY);
 		if (!this.settings.challengeExpires) return false;
 		const now = Date.now();
-		this.updateStatus('Ready');
+		this.updateStatus(STATUS.READY);
 		return now < this.settings.challengeExpires;
 	}
 
@@ -837,7 +832,7 @@ export class MusqetUser {
 	 * @returns {string} - encrypted settings in hex
 	 */
 	private settingsToEncryptedHex(encryptionKey: Uint8Array): string {
-		this.updateStatus('Encrypting settings');
+		this.updateStatus(STATUS.ENCRYPTING);
 		try {
 			const settingsString = JSON.stringify(this.settings, (_key: string, value: SettingsValue) => {
 				if (value instanceof Uint8Array) {
@@ -851,8 +846,8 @@ export class MusqetUser {
 			const settingsBytes = new TextEncoder().encode(settingsString);
 			const encryptedBytes = lockBox(encryptionKey, settingsBytes);
 			const encryptedHex = bytesToHex(encryptedBytes);
-			this.updateStatus('Settings encrypted');
-			this.updateStatus('Ready');
+			this.updateStatus(STATUS.ENCRYPTED);
+			this.updateStatus(STATUS.READY);
 			return encryptedHex;
 		} catch (err) {
 			this.addError(`${err}`);
@@ -868,7 +863,7 @@ export class MusqetUser {
 	 * @private
 	 */
 	private decryptSettings(key: Uint8Array, musqetEncryptedStorage: string): SettingsObject {
-		this.updateStatus('Decrypting settings');
+		this.updateStatus(STATUS.DECRYPTING);
 		try {
 			if (this.settings.priv.length === 0) throw 'Private key is required';
 			if (!musqetEncryptedStorage || typeof musqetEncryptedStorage !== 'string')
@@ -889,8 +884,8 @@ export class MusqetUser {
 				}
 				return value;
 			});
-			this.updateStatus('Settings decrypted');
-			this.updateStatus('Ready');
+			this.updateStatus(STATUS.DECRYPTED);
+			this.updateStatus(STATUS.READY);
 			return settings;
 		} catch (err) {
 			this.addError(`${err}`);
@@ -910,7 +905,7 @@ export class MusqetUser {
 		if (this.errors.length > 10) {
 			this.errors.shift();
 		}
-		this.updateStatus('Error');
+		this.updateStatus(STATUS.ERROR);
 	}
 
 	/**
@@ -932,7 +927,7 @@ export class MusqetUser {
 			return false;
 		}
 		try {
-			this.updateStatus('Starting challenge');
+			this.updateStatus(STATUS.START_CHALLENGE);
 			const response1 = await fetch(
 				`${this.API}challenge?email=${
 					this.settings.email
@@ -952,11 +947,11 @@ export class MusqetUser {
 				this.addError('Nonce not received');
 				return false;
 			}
-			this.updateStatus('Signing challenge');
+			this.updateStatus(STATUS.SIGN_CHALLENGE);
 			const nonceU8 = base64url.decode(nonce);
 			const signatureU8 = schnorr.sign(nonceU8, this.settings.priv);
 			const signature = base64url.encode(signatureU8);
-			this.updateStatus('Sending challenge');
+			this.updateStatus(STATUS.SEND_CHALLENGE);
 			const response2 = await fetch(`${this.API}challenge`, {
 				method: 'POST',
 				headers: {
@@ -973,10 +968,10 @@ export class MusqetUser {
 				this.addError(json2.message);
 				return false;
 			}
-			this.settings.challengeExpires = new Date(json2.data.expires).getTime() - 60000;
+			this.settings.challengeExpires = new Date(json2.data.expires).getTime() - ONE_MINUTE_MILLIS;
 			this.settings.bearerToken = json2.data.token;
-			this.updateStatus('Challenge completed');
-			this.updateStatus('Ready');
+			this.updateStatus(STATUS.CHALLENGE_COMPLETE);
+			this.updateStatus(STATUS.READY);
 			return true;
 		} catch (err) {
 			this.addError(`${err}`);
