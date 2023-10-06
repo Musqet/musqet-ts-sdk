@@ -1,0 +1,14 @@
+{
+	"compilerOptions": {
+		"module": "ES6",
+		"target": "ES2021",
+		"lib": ["ES2021", "DOM"],
+		"declaration": true,
+		"outDir": "./dist/lib/es6",
+		"moduleResolution": "node",
+		"strict": true,
+		"sourceMap": true,
+		"esModuleInterop": true
+	},
+	"include": ["src/**/*"]
+}
