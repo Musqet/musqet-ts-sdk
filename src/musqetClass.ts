@@ -22,17 +22,6 @@ import { NODE_STATUS, PREFIX, STATUS } from './const/strings';
 import { KDF_MODULUS, ONE_MINUTE_MILLIS } from './const/numbers';
 import { ENVIRONMENT } from './const/envs';
 
-/*
-KDF accounts:
-  0: priv
-  1: totp
-  2: pin
-*/
-
-// Types
-
-// class
-
 export class MusqetUser {
 	// init properties
 	initiated = false;
