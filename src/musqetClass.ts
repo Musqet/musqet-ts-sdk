@@ -48,7 +48,7 @@ export class MusqetUser {
 		encipheredSeed: '',
 		nodePassword: ''
 	};
-	errors = [''];
+	errors: Error[] = [];
 	// TODO: update with API URL
 	private API = 'http://localhost:3000/api/v1/';
 
@@ -890,8 +890,8 @@ export class MusqetUser {
 	 * @private
 	 */
 	private addError(error: string): void {
-		const e = new Error();
-		this.errors.push(`${error} - ${new Date().toISOString()} - ${e.stack}`);
+		const e = new Error(`${new Date().toISOString()}: ${error}`);
+		this.errors.push(e);
 		if (this.errors.length > 10) {
 			this.errors.shift();
 		}
