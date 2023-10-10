@@ -2,6 +2,7 @@ import { schnorr } from '@noble/curves/secp256k1';
 import { eskdf } from '@noble/hashes/eskdf';
 import { randomBytes } from '@noble/hashes/utils';
 import { base64url, base64 } from '@scure/base';
+import { isAPIError } from './helpers';
 import { lockBox, unlockBox, bytesToHex, hexToBytes } from './cryptography';
 import {
 	APIChallengePostResponse,
@@ -20,17 +21,6 @@ import {
 import { NODE_STATUS, PREFIX, STATUS } from './const/strings';
 import { KDF_MODULUS, ONE_MINUTE_MILLIS } from './const/numbers';
 import { ENVIRONMENT } from './const/envs';
-
-/*
-KDF accounts:
-  0: priv
-  1: totp
-  2: pin
-*/
-
-// Types
-
-// class
 
 export class MusqetUser {
 	// init properties
@@ -58,7 +48,7 @@ export class MusqetUser {
 		encipheredSeed: '',
 		nodePassword: ''
 	};
-	errors = [''];
+	errors: Error[] = [];
 	// TODO: update with API URL
 	private API = 'http://localhost:3000/api/v1/';
 
@@ -900,8 +890,8 @@ export class MusqetUser {
 	 * @private
 	 */
 	private addError(error: string): void {
-		const e = new Error();
-		this.errors.push(`${error} - ${new Date().toISOString()} - ${e.stack}`);
+		const e = new Error(`${new Date().toISOString()}: ${error}`);
+		this.errors.push(e);
 		if (this.errors.length > 10) {
 			this.errors.shift();
 		}
@@ -984,8 +974,3 @@ export class MusqetUser {
 		this.subscribeStatus(status);
 	}
 }
-
-// helpers
-const isAPIError = (obj: any): obj is APIError => {
-	return obj.ok === false && obj.message !== undefined;
-};
