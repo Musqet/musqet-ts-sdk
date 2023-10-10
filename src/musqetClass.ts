@@ -2,6 +2,7 @@ import { schnorr } from '@noble/curves/secp256k1';
 import { eskdf } from '@noble/hashes/eskdf';
 import { randomBytes } from '@noble/hashes/utils';
 import { base64url, base64 } from '@scure/base';
+import {  isAPIError } from "./helpers";
 import { lockBox, unlockBox, bytesToHex, hexToBytes } from './cryptography';
 import {
 	APIChallengePostResponse,
@@ -984,8 +985,3 @@ export class MusqetUser {
 		this.subscribeStatus(status);
 	}
 }
-
-// helpers
-const isAPIError = (obj: any): obj is APIError => {
-	return obj.ok === false && obj.message !== undefined;
-};
