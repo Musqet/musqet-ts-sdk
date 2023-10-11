@@ -1,3 +1,3 @@
 test('crypto', async () => {
-    expect(true).toBe(true);
-})
+	expect(true).toBe(true);
+});
