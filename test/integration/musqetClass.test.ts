@@ -1,4 +1,4 @@
-import { MusqetUser } from '../src/musqetClass';
+import { MusqetUser } from '../../src/musqetClass';
 
 const config = {
 	newUser: true,

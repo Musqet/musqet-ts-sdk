@@ -14,6 +14,8 @@
 	"scripts": {
 		"compile": "rm -rf dist/lib && tsc && tsc --build tsconfig.es5.json",
 		"test": "jest --coverage",
+		"test:unit": "jest --coverage ./unit",
+		"test:integration": "jest --coverage ./integration",
 		"dev": "tsc --watch",
 		"lint": "eslint --ext .js,.ts . --fix",
 		"format": "prettier --write .",
