@@ -638,14 +638,6 @@ export class MusqetUser {
 		}
 	}
 
-	// TODO: Remove this method It's too dangerous
-	async delNodes(): Promise<boolean> {
-		const r = await fetch(`${this.API}temp/del`, {
-			method: 'GET'
-		});
-		return true;
-	}
-
 	//
 
 	// Start day
