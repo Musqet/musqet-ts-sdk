@@ -26,7 +26,9 @@ export class MusqetUser {
 	// init properties
 	initiated = false;
 	publicKeyBase64URL = '';
-	subscribeStatus = (status: string) => {};
+	subscribeStatus = (status: string) => {
+		status;
+	};
 	status = STATUS.READY;
 	registered = false;
 	private settings: SettingsObject = {
