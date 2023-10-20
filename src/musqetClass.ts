@@ -204,17 +204,17 @@ export class MusqetUser {
 	/**
 	 * Automatically log in the user from their private key stored in secure storage
 	 */
-	async autoLogin(): Promise<boolean> {
-		try {
-			// TODO - this will depend on the secure storage implementation
-			// for now, just return false
-			return false;
-			return true;
-		} catch (err) {
-			this.addError(`${err}`);
-			return false;
-		}
-	}
+	// async autoLogin(): Promise<boolean> {
+	// 	try {
+	// 		// TODO - this will depend on the secure storage implementation
+	// 		// for now, just return false
+	// 		return false;
+	// 		return true;
+	// 	} catch (err) {
+	// 		this.addError(`${err}`);
+	// 		return false;
+	// 	}
+	// }
 
 	/**
 	 * Delete the user from the server
