@@ -26,7 +26,9 @@ export class MusqetUser {
 	// init properties
 	initiated = false;
 	publicKeyBase64URL = '';
-	subscribeStatus = (status: string) => {};
+	subscribeStatus = (status: string) => {
+		status;
+	};
 	status = STATUS.READY;
 	registered = false;
 	private settings: SettingsObject = {
@@ -202,17 +204,17 @@ export class MusqetUser {
 	/**
 	 * Automatically log in the user from their private key stored in secure storage
 	 */
-	async autoLogin(): Promise<boolean> {
-		try {
-			// TODO - this will depend on the secure storage implementation
-			// for now, just return false
-			return false;
-			return true;
-		} catch (err) {
-			this.addError(`${err}`);
-			return false;
-		}
-	}
+	// async autoLogin(): Promise<boolean> {
+	// 	try {
+	// 		// TODO - this will depend on the secure storage implementation
+	// 		// for now, just return false
+	// 		return false;
+	// 		return true;
+	// 	} catch (err) {
+	// 		this.addError(`${err}`);
+	// 		return false;
+	// 	}
+	// }
 
 	/**
 	 * Delete the user from the server
@@ -634,14 +636,6 @@ export class MusqetUser {
 			this.addError(`${err}`);
 			return false;
 		}
-	}
-
-	// TODO: Remove this method It's too dangerous
-	async delNodes(): Promise<boolean> {
-		const r = await fetch(`${this.API}temp/del`, {
-			method: 'GET'
-		});
-		return true;
 	}
 
 	//
