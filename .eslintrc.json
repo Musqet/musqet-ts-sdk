@@ -18,7 +18,17 @@
 		"@typescript-eslint/require-await": "warn",
 		"@typescript-eslint/await-thenable": "warn",
 		"@typescript-eslint/consistent-type-exports": "warn",
-		"no-else-return": "warn"
+		"no-else-return": "warn",
+		"indent": [
+			"error",
+			"tab",
+			{
+				"SwitchCase": 1,
+				"offsetTernaryExpressions": true,
+				"flatTernaryExpressions": true
+			}
+		],
+		"no-mixed-spaces-and-tabs": ["error", "smart-tabs"]
 	},
 
 	"env": {
