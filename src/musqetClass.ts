@@ -396,6 +396,13 @@ export class MusqetUser {
 	 */
 	async getNodeStatus(): Promise<NodeStatusResponse> {
 		try {
+			if (!this.settings.business) throw 'Business is required: cannot get node status';
+			if (!this.checkChallengeExpiry()) {
+				const challengeCompleted = await this.completeChallenge();
+				if (!challengeCompleted) {
+					throw 'Challenge not completed';
+				}
+			}
 			const r = await fetch(`${this.API}b/${this.settings.business}/ln/status`, {
 				headers: {
 					Authorization: `Bearer ${this.settings.bearerToken}`
@@ -547,7 +554,7 @@ export class MusqetUser {
 				}
 			}
 			// post the macaroon to the server
-			const response7 = await fetch(`${this.API}b/${this.settings.business}/ln/macaroon`, {
+			const postMacaroon = await fetch(`${this.API}b/${this.settings.business}/ln/macaroon`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
@@ -557,13 +564,30 @@ export class MusqetUser {
 					macaroon
 				})
 			});
-			const json7: APIError | { ok: true } = await response7.json();
-			if (isAPIError(json7)) {
-				throw json7.message;
+			const postMacaroonResponse:
+				| APIError
+				| {
+						ok: true;
+						data: {
+							pubkey: string;
+							host: string;
+						};
+				  } = await postMacaroon.json();
+			if (isAPIError(postMacaroonResponse)) {
+				throw postMacaroonResponse.message;
 			}
 			this.updateStatus(STATUS.BAKED);
 			await this.backup();
-			// todo connect node to musqet node as a peer
+			// connect the node to Musqet node
+			const { pubkey, host } = postMacaroonResponse.data;
+			if (!pubkey || !host) {
+				throw 'Musqet node not found: cannot connect as peer';
+			}
+			const peerConnected = await this.connectPeer(pubkey, host);
+			if (!peerConnected) {
+				throw 'Peer not connected';
+			}
+			this.updateStatus(STATUS.PEER_CONNECTED);
 			return true;
 		} catch (err) {
 			this.addError(`${err}`);
@@ -966,5 +990,31 @@ export class MusqetUser {
 	private updateStatus(status: string) {
 		this.status = status;
 		this.subscribeStatus(status);
+	}
+
+	private async connectPeer(pubkey: string, host: string): Promise<boolean> {
+		try {
+			const peerConnectRequest = await fetch(`https://${this.settings.nodeUrl}:8080/v1/peers`, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'Grpc-Metadata-Macaroon': this.settings.macaroon
+				},
+				body: JSON.stringify({
+					addr: {
+						pubkey,
+						host
+					},
+					perm: true
+				})
+			});
+			if (!peerConnectRequest.ok) {
+				throw 'Peer connection failed';
+			}
+			return true;
+		} catch (error) {
+			this.addError(`${error}`);
+			return false;
+		}
 	}
 }
