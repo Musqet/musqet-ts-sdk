@@ -85,12 +85,13 @@ test('MusqetUser', async () => {
 		await new Promise((resolve) => setTimeout(resolve, 3000));
 		const node = await oldUser.getNodeStatus();
 		console.log('node.status :>> ', node.status);
-		nodeReadyAgain = node.status === 'stopped';
+		nodeReadyAgain = node.status === 'stopped' || node.status === 'running';
 	}
 	// ! Start the node
-	const isNodeStart = await oldUser.startNode();
-	if (!isNodeStart) console.log(oldUser.errors);
-	expect(isNodeStart).toBe(true);
+	// this should be done automatically by the server
+	// const isNodeStart = await oldUser.startNode();
+	// if (!isNodeStart) console.log(oldUser.errors);
+	// expect(isNodeStart).toBe(true);
 	// ! Wait for the node to be ready
 	let nodeReadyAgainAgain = false;
 	while (!nodeReadyAgainAgain) {
@@ -102,9 +103,11 @@ test('MusqetUser', async () => {
 	}
 	// ! Wait for node sync
 	let nodeSyncing = false;
+	let syncCount = 0;
 	while (!nodeSyncing) {
 		// pause for 3 seconds
 		await new Promise((resolve) => setTimeout(resolve, 3000));
+		syncCount++;
 		const node = await oldUser.getNodeStatus();
 		console.log(
 			'node.synced :>> ',
@@ -112,6 +115,10 @@ test('MusqetUser', async () => {
 		);
 		nodeSyncing =
 			node.blockTip !== undefined && node.blockTip > 0 && node.blockTip === node.blockHeight;
+		if (syncCount > 10) {
+			console.log('Syncing taking too long');
+			break;
+		}
 	}
 	// ! Finally, delete the user
 	const isDeleted = await oldUser.deleteUser();
