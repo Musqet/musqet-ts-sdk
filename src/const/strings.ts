@@ -40,6 +40,7 @@ export const STATUS = {
 	SIGN_CHALLENGE: 'Signing challenge',
 	SEND_CHALLENGE: 'Sending challenge',
 	CHALLENGE_COMPLETE: 'Challenge completed',
+	PEER_CONNECTED: 'Peer connected',
 	ERROR: 'Error'
 };
 

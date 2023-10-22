@@ -396,6 +396,13 @@ export class MusqetUser {
 	 */
 	async getNodeStatus(): Promise<NodeStatusResponse> {
 		try {
+			if (!this.settings.business) throw 'Business is required: cannot get node status';
+			if (!this.checkChallengeExpiry()) {
+				const challengeCompleted = await this.completeChallenge();
+				if (!challengeCompleted) {
+					throw 'Challenge not completed';
+				}
+			}
 			const r = await fetch(`${this.API}b/${this.settings.business}/ln/status`, {
 				headers: {
 					Authorization: `Bearer ${this.settings.bearerToken}`
@@ -580,6 +587,7 @@ export class MusqetUser {
 			if (!peerConnected) {
 				throw 'Peer not connected';
 			}
+			this.updateStatus(STATUS.PEER_CONNECTED);
 			return true;
 		} catch (err) {
 			this.addError(`${err}`);
