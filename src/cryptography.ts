@@ -18,10 +18,10 @@ export const base64ToString = (str: string) => utf8Decoder.decode(base64.decode(
 export const bytesToHex = utils.bytesToHex;
 export const hexToBytes = utils.hexToBytes;
 
-export const getPubKeyFromPrivateKey = (privateKeyHex: string) =>
-	bytesToHex(getNormalizedX(schnorr.getPublicKey(privateKeyHex)));
+export const getPubKeyFromPrivateKey = (privateKey: Uint8Array) =>
+	getNormalizedX(schnorr.getPublicKey(privateKey));
 
-export const generatePrivateKey = () => bytesToHex(secp256k1.utils.randomPrivateKey());
+export const generatePrivateKey = secp256k1.utils.randomPrivateKey;
 
 export const generateNonce = (bytes = 16) => bytesToHex(randomBytes(bytes));
 
@@ -45,7 +45,7 @@ export async function encrypt(
 	pubkey: Uint8Array,
 	text: string
 ): Promise<Uint8Array> {
-	const key = secp256k1.getSharedSecret(ourPrivateKeyU8, addX(pubkey));
+	const key = secp256k1.getSharedSecret(ourPrivateKeyU8, addX(pubkey), true);
 	const normalizedKey = getNormalizedX(key);
 
 	const iv = randomBytes(16);
