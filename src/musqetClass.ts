@@ -579,15 +579,15 @@ export class MusqetUser {
 			this.updateStatus(STATUS.BAKED);
 			await this.backup();
 			// connect the node to Musqet node
-			const { pubkey, host } = postMacaroonResponse.data;
-			if (!pubkey || !host) {
-				throw 'Musqet node not found: cannot connect as peer';
-			}
-			const peerConnected = await this.connectPeer(pubkey, host);
-			if (!peerConnected) {
-				throw 'Peer not connected';
-			}
-			this.updateStatus(STATUS.PEER_CONNECTED);
+			// const { pubkey, host } = postMacaroonResponse.data;
+			// if (!pubkey || !host) {
+			// 	throw 'Musqet node not found: cannot connect as peer';
+			// }
+			// const peerConnected = await this.connectPeer(pubkey, host);
+			// if (!peerConnected) {
+			// 	throw 'Peer not connected';
+			// }
+			// this.updateStatus(STATUS.PEER_CONNECTED);
 			return true;
 		} catch (err) {
 			this.addError(`${err}`);

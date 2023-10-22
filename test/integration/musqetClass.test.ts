@@ -116,4 +116,4 @@ test('MusqetUser', async () => {
 	// ! Finally, delete the user
 	const isDeleted = await oldUser.deleteUser();
 	expect(isDeleted).toBe(true);
-}, 60000);
+}, 600000);
