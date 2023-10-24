@@ -48,7 +48,6 @@ export class MusqetUser {
 		encipheredSeed: '',
 		nodePassword: ''
 	};
-	errors: Error[] = [];
 	// TODO: update with API URL
 	private API = 'http://localhost:3000/api/v1/';
 
@@ -133,15 +132,15 @@ export class MusqetUser {
 	async signup(name: string, email: string, passphrase: string): Promise<boolean> {
 		this.updateStatus(STATUS.STARTING);
 		if (!name || typeof name !== 'string') {
-			const e = this.addError('Name is required');
+			const e = this.createError('Name is required');
 			throw e;
 		}
 		if (!email || typeof email !== 'string') {
-			const e = this.addError('Email is required');
+			const e = this.createError('Email is required');
 			throw e;
 		}
 		if (!passphrase || typeof passphrase !== 'string') {
-			const e = this.addError('Passphrase is required');
+			const e = this.createError('Passphrase is required');
 			throw e;
 		}
 		try {
@@ -149,20 +148,20 @@ export class MusqetUser {
 			this.settings.email = email;
 			const isInit = await this.initFromPassphrase(email, passphrase);
 			if (!isInit) {
-				const e = this.addError('Could not initialize user');
+				const e = this.createError('Could not initialize user');
 				throw e;
 			}
 			// Register the user
 			const isRegistered = await this.register();
 			if (!isRegistered) {
-				const e = this.addError('User not registered');
+				const e = this.createError('User not registered');
 				throw e;
 			}
 			// complete a challenge
 			if (!this.checkChallengeExpiry()) {
 				const challengeCompleted = await this.completeChallenge();
 				if (!challengeCompleted) {
-					const e = this.addError('Challenge not completed');
+					const e = this.createError('Challenge not completed');
 					throw e;
 				}
 			}
@@ -171,7 +170,7 @@ export class MusqetUser {
 			this.updateStatus(STATUS.READY);
 			return true;
 		} catch (err) {
-			const e = this.addError(`${err}`);
+			const e = this.createError(`${err}`);
 			throw e;
 		}
 	}
@@ -190,24 +189,24 @@ export class MusqetUser {
 	async login(email: string, passphrase: string): Promise<boolean> {
 		this.updateStatus(STATUS.LOGIN);
 		if (!email) {
-			const e = this.addError('Email is required');
+			const e = this.createError('Email is required');
 			throw e;
 		}
 		if (!passphrase) {
-			const e = this.addError('Passphrase is required');
+			const e = this.createError('Passphrase is required');
 			throw e;
 		}
 		try {
 			const isInit = await this.initFromPassphrase(email, passphrase);
 			if (!isInit) {
-				const e = this.addError('Could not initialize user');
+				const e = this.createError('Could not initialize user');
 				throw e;
 			}
 
 			// complete a challenge
 			const challengeCompleted = await this.completeChallenge();
 			if (!challengeCompleted) {
-				const e = this.addError('Challenge not completed');
+				const e = this.createError('Challenge not completed');
 				throw e;
 			}
 			// fetch user's settings from server
@@ -218,7 +217,7 @@ export class MusqetUser {
 			});
 			const json: APIError | APIUserResponse = await response.json();
 			if (isAPIError(json)) {
-				const e = this.addError(json.message);
+				const e = this.createError(json.message);
 				throw e;
 			}
 			const { backup } = json.data;
@@ -232,7 +231,7 @@ export class MusqetUser {
 			this.updateStatus(STATUS.READY);
 			return true;
 		} catch (err) {
-			const e = this.addError(`${err}`);
+			const e = this.createError(`${err}`);
 			throw e;
 		}
 	}
@@ -247,7 +246,7 @@ export class MusqetUser {
 	// 		return false;
 	// 		return true;
 	// 	} catch (err) {
-	// 		this.addError(`${err}`);
+	// 		this.createError(`${err}`);
 	// 		return false;
 	// 	}
 	// }
@@ -272,7 +271,7 @@ export class MusqetUser {
 		});
 		const json: APIError | { ok: true } = await response.json();
 		if (isAPIError(json)) {
-			const e = this.addError(json.message);
+			const e = this.createError(json.message);
 			throw e;
 		}
 		return true;
@@ -289,11 +288,11 @@ export class MusqetUser {
 	 */
 	async backup(): Promise<boolean> {
 		if (!this.initiated) {
-			const e = this.addError('User is not initialized');
+			const e = this.createError('User is not initialized');
 			throw e;
 		}
 		if (!this.settings.priv.length) {
-			const e = this.addError('Private key is required');
+			const e = this.createError('Private key is required');
 			throw e;
 		}
 		this.updateStatus(STATUS.BACKING_UP);
@@ -301,7 +300,7 @@ export class MusqetUser {
 			if (!this.checkChallengeExpiry()) {
 				const challengeCompleted = await this.completeChallenge();
 				if (!challengeCompleted) {
-					const e = this.addError('Challenge not completed');
+					const e = this.createError('Challenge not completed');
 					throw e;
 				}
 			}
@@ -319,12 +318,12 @@ export class MusqetUser {
 			});
 			const json: APIError | APIUserResponse = await response.json();
 			if (isAPIError(json)) {
-				const e = this.addError(json.message);
+				const e = this.createError(json.message);
 				throw e;
 			}
 			return true;
 		} catch (err) {
-			const e = this.addError(`${err}`);
+			const e = this.createError(`${err}`);
 			throw e;
 		}
 	}
@@ -342,13 +341,13 @@ export class MusqetUser {
 		if (!this.checkChallengeExpiry()) {
 			const challengeCompleted = await this.completeChallenge();
 			if (!challengeCompleted) {
-				const e = this.addError('Challenge not completed');
+				const e = this.createError('Challenge not completed');
 				throw e;
 			}
 		}
 		this.updateStatus(STATUS.FETCH_PRICE);
 		if (!currency || typeof currency !== 'string') {
-			const e = this.addError('Currency is required');
+			const e = this.createError('Currency is required');
 			throw e;
 		}
 		const response = await fetch(`${this.API}price?currency=${currency}`, {
@@ -358,7 +357,7 @@ export class MusqetUser {
 		});
 		const json: APIError | APIPriceResponse = await response.json();
 		if (isAPIError(json)) {
-			const e = this.addError(json.message);
+			const e = this.createError(json.message);
 			throw e;
 		}
 		const { price, symbol } = json.data;
@@ -391,7 +390,7 @@ export class MusqetUser {
 			if (!this.checkChallengeExpiry()) {
 				const challengeCompleted = await this.completeChallenge();
 				if (!challengeCompleted) {
-					const e = this.addError('Challenge not completed');
+					const e = this.createError('Challenge not completed');
 					throw e;
 				}
 			}
@@ -406,7 +405,7 @@ export class MusqetUser {
 			});
 			const json: APIError | APINewBusinessResponse = await response.json();
 			if (isAPIError(json)) {
-				const e = this.addError(json.message);
+				const e = this.createError(json.message);
 				throw e;
 			}
 			const { businessId } = json.data;
@@ -415,7 +414,7 @@ export class MusqetUser {
 			this.updateStatus(STATUS.READY);
 			return true;
 		} catch (err) {
-			const e = this.addError(`${err}`);
+			const e = this.createError(`${err}`);
 			throw e;
 		}
 	}
@@ -439,14 +438,14 @@ export class MusqetUser {
 	 */
 	async getNodeStatus(): Promise<NodeStatusResponse> {
 		if (!this.settings.business) {
-			const e = this.addError('Business is required: cannot get node status');
+			const e = this.createError('Business is required: cannot get node status');
 			throw e;
 		}
 		try {
 			if (!this.checkChallengeExpiry()) {
 				const challengeCompleted = await this.completeChallenge();
 				if (!challengeCompleted) {
-					const e = this.addError('Challenge not completed');
+					const e = this.createError('Challenge not completed');
 					throw e;
 				}
 			}
@@ -457,7 +456,7 @@ export class MusqetUser {
 			});
 			const json: APIError | APINodeStatus = await r.json();
 			if (isAPIError(json)) {
-				const e = this.addError(json.message);
+				const e = this.createError(json.message);
 				throw e;
 			}
 			// set a flag to backup if settings are changed
@@ -486,14 +485,14 @@ export class MusqetUser {
 					}
 				);
 				if (!unlockResponse.ok) {
-					const e = this.addError('Node unlock failed');
+					const e = this.createError('Node unlock failed');
 					throw e;
 				}
 			}
 			if (settingsChanged) await this.backup();
 			return json.data;
 		} catch (err) {
-			const e = this.addError(`${err}`);
+			const e = this.createError(`${err}`);
 			throw e;
 		}
 	}
@@ -510,7 +509,7 @@ export class MusqetUser {
 	async initNode(): Promise<boolean> {
 		// check there is a node
 		if (!this.settings.nodeId || !this.settings.nodeUrl) {
-			const e = this.addError('No node found to initialize');
+			const e = this.createError('No node found to initialize');
 			throw e;
 		}
 		try {
@@ -541,7 +540,7 @@ export class MusqetUser {
 			const saved = await this.backup();
 
 			if (!saved) {
-				const e = this.addError('Settings not saved');
+				const e = this.createError('Settings not saved');
 				throw e;
 			}
 			this.updateStatus(STATUS.SAVED);
@@ -596,7 +595,7 @@ export class MusqetUser {
 				const json6: { macaroon: string } = await response6.json();
 				macaroon = json6.macaroon ?? '';
 				if (counter > 15 && !macaroon) {
-					const e = this.addError('Macaroon not baked');
+					const e = this.createError('Macaroon not baked');
 					throw e;
 				}
 			}
@@ -621,7 +620,7 @@ export class MusqetUser {
 						};
 				  } = await postMacaroon.json();
 			if (isAPIError(postMacaroonResponse)) {
-				const e = this.addError(postMacaroonResponse.message);
+				const e = this.createError(postMacaroonResponse.message);
 				throw e;
 			}
 			this.updateStatus(STATUS.BAKED);
@@ -629,18 +628,18 @@ export class MusqetUser {
 			// connect the node to Musqet node
 			const { pubkey, host } = postMacaroonResponse.data;
 			if (!pubkey || !host) {
-				const e = this.addError('Musqet node not found: cannot connect as peer');
+				const e = this.createError('Musqet node not found: cannot connect as peer');
 				throw e;
 			}
 			const peerConnected = await this.connectPeer(pubkey, host);
 			if (!peerConnected) {
-				const e = this.addError('Peer not connected');
+				const e = this.createError('Peer not connected');
 				throw e;
 			}
 			this.updateStatus(STATUS.PEER_CONNECTED);
 			return true;
 		} catch (err) {
-			const e = this.addError(`${err}`);
+			const e = this.createError(`${err}`);
 			throw e;
 		}
 	}
@@ -657,7 +656,7 @@ export class MusqetUser {
 	async stopNode(): Promise<boolean> {
 		// check there is a node
 		if (!this.settings.nodeId || !this.settings.nodeUrl) {
-			const e = this.addError('No node found to stop');
+			const e = this.createError('No node found to stop');
 			throw e;
 		}
 		try {
@@ -670,12 +669,12 @@ export class MusqetUser {
 			});
 			const json: APIError | { ok: true } = await response.json();
 			if (isAPIError(json)) {
-				const e = this.addError(json.message);
+				const e = this.createError(json.message);
 				throw e;
 			}
 			return true;
 		} catch (err) {
-			const e = this.addError(`${err}`);
+			const e = this.createError(`${err}`);
 			throw e;
 		}
 	}
@@ -692,7 +691,7 @@ export class MusqetUser {
 	async startNode(): Promise<boolean> {
 		// check there is a node
 		if (!this.settings.nodeId || !this.settings.nodeUrl) {
-			const e = this.addError(`No node found to start`);
+			const e = this.createError(`No node found to start`);
 			throw e;
 		}
 		try {
@@ -705,13 +704,13 @@ export class MusqetUser {
 			});
 			const json: APIError | { ok: true } = await response.json();
 			if (isAPIError(json)) {
-				const e = this.addError(json.message);
+				const e = this.createError(json.message);
 				throw e;
 			}
 			this.updateStatus(STATUS.NODE_STARTED);
 			return true;
 		} catch (err) {
-			const e = this.addError(`${err}`);
+			const e = this.createError(`${err}`);
 			throw e;
 		}
 	}
@@ -803,19 +802,19 @@ export class MusqetUser {
 	 */
 	private async register(): Promise<boolean> {
 		if (!this.initiated) {
-			const e = this.addError('User is not initialized');
+			const e = this.createError('User is not initialized');
 			throw e;
 		}
 		if (!this.settings.email) {
-			const e = this.addError('Email is required');
+			const e = this.createError('Email is required');
 			throw e;
 		}
 		if (!this.settings.pub.length || !this.publicKeyBase64URL) {
-			const e = this.addError('Public key is required');
+			const e = this.createError('Public key is required');
 			throw e;
 		}
 		if (!this.settings.name) {
-			const e = this.addError('Name is required');
+			const e = this.createError('Name is required');
 			throw e;
 		}
 		try {
@@ -833,7 +832,7 @@ export class MusqetUser {
 			});
 			const json = await response.json();
 			if (!json.ok) {
-				const e = this.addError(json.message);
+				const e = this.createError(json.message);
 				throw e;
 			}
 			this.registered = true;
@@ -841,7 +840,7 @@ export class MusqetUser {
 			this.updateStatus(STATUS.READY);
 			return true;
 		} catch (err) {
-			const e = this.addError(`${err}`);
+			const e = this.createError(`${err}`);
 			throw e;
 		}
 	}
@@ -856,11 +855,11 @@ export class MusqetUser {
 	private async initFromPassphrase(identifier: string, passphrase: string): Promise<boolean> {
 		try {
 			if (!passphrase) {
-				const e = this.addError('Passphrase is required');
+				const e = this.createError('Passphrase is required');
 				throw e;
 			}
 			if (!identifier) {
-				const e = this.addError('Identifier is required');
+				const e = this.createError('Identifier is required');
 				throw e;
 			}
 			// TODO: require a minimum length for passphrase
@@ -879,7 +878,7 @@ export class MusqetUser {
 			this.updateStatus(STATUS.READY);
 			return this.initiated;
 		} catch (err) {
-			const e = this.addError(`${err}`);
+			const e = this.createError(`${err}`);
 			throw e;
 		}
 	}
@@ -920,7 +919,7 @@ export class MusqetUser {
 			this.updateStatus(STATUS.READY);
 			return encryptedHex;
 		} catch (err) {
-			const e = this.addError(`${err}`);
+			const e = this.createError(`${err}`);
 			throw e;
 		}
 	}
@@ -936,11 +935,11 @@ export class MusqetUser {
 		this.updateStatus(STATUS.DECRYPTING);
 		try {
 			if (this.settings.priv.length === 0) {
-				const e = this.addError('Private key is required');
+				const e = this.createError('Private key is required');
 				throw e;
 			}
 			if (!musqetEncryptedStorage || typeof musqetEncryptedStorage !== 'string') {
-				const e = this.addError('Encrypted settings are required');
+				const e = this.createError('Encrypted settings are required');
 				throw e;
 			}
 			const encryptedBytes = hexToBytes(musqetEncryptedStorage);
@@ -963,7 +962,7 @@ export class MusqetUser {
 			this.updateStatus(STATUS.READY);
 			return settings;
 		} catch (err) {
-			const e = this.addError(`${err}`);
+			const e = this.createError(`${err}`);
 			throw e;
 		}
 	}
@@ -974,13 +973,9 @@ export class MusqetUser {
 	 * @returns {void}
 	 * @private
 	 */
-	private addError(error: string): Error {
+	private createError(error: string): Error {
 		const e = new Error(`${new Date().toISOString()}: ${error}`);
-		this.errors.push(e);
-		if (this.errors.length > 10) {
-			this.errors.shift();
-		}
-		this.updateStatus(STATUS.ERROR);
+		this.updateStatus(`${STATUS.ERROR}: ${error}`);
 		return e;
 	}
 
@@ -995,13 +990,13 @@ export class MusqetUser {
 	private async completeChallenge(): Promise<boolean> {
 		// if (!this.registered) return false;
 		if (!this.settings.email) {
-			const e = this.addError('Email is required');
+			const e = this.createError('Email is required');
 			throw e;
 
 			return false;
 		}
 		if (!this.settings.pub.length) {
-			const e = this.addError('Public key is required');
+			const e = this.createError('Public key is required');
 			throw e;
 		}
 		try {
@@ -1013,16 +1008,16 @@ export class MusqetUser {
 			);
 			const json1: APIError | APIChallengeResponse = await response1.json();
 			if (isAPIError(json1)) {
-				const e = this.addError(json1.message);
+				const e = this.createError(json1.message);
 				throw e;
 			}
 			if (!json1.data.nonce) {
-				const e = this.addError('Nonce not received');
+				const e = this.createError('Nonce not received');
 				throw e;
 			}
 			const nonce = json1.data.nonce;
 			if (!nonce) {
-				const e = this.addError('Nonce not received');
+				const e = this.createError('Nonce not received');
 				throw e;
 			}
 			this.updateStatus(STATUS.SIGN_CHALLENGE);
@@ -1043,7 +1038,7 @@ export class MusqetUser {
 			});
 			const json2: APIError | APIChallengePostResponse = await response2.json();
 			if (isAPIError(json2)) {
-				const e = this.addError(json2.message);
+				const e = this.createError(json2.message);
 				throw e;
 			}
 			this.settings.challengeExpires = new Date(json2.data.expires).getTime() - ONE_MINUTE_MILLIS;
@@ -1052,7 +1047,7 @@ export class MusqetUser {
 			this.updateStatus(STATUS.READY);
 			return true;
 		} catch (err) {
-			const e = this.addError(`${err}`);
+			const e = this.createError(`${err}`);
 			throw e;
 		}
 	}
@@ -1079,12 +1074,12 @@ export class MusqetUser {
 				})
 			});
 			if (!peerConnectRequest.ok) {
-				const e = this.addError('Peer connection failed');
+				const e = this.createError('Peer connection failed');
 				throw e;
 			}
 			return true;
 		} catch (err) {
-			const e = this.addError(`${err}`);
+			const e = this.createError(`${err}`);
 			throw e;
 		}
 	}
