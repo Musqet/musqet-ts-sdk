@@ -24,13 +24,11 @@ import { ENVIRONMENT } from './const/envs';
 
 export class MusqetUser {
 	// init properties
-	initiated = false;
-	publicKeyBase64URL = '';
-	subscribeStatus = (status: string) => {
-		status;
-	};
-	status = STATUS.READY;
-	registered = false;
+	private initiated = false;
+	private publicKeyBase64URL = '';
+	private subscribeStatus = (status: string) => {};
+	private status = STATUS.READY;
+	private registered = false;
 	private settings: SettingsObject = {
 		pub: new Uint8Array(0),
 		priv: new Uint8Array(0),
@@ -69,6 +67,40 @@ export class MusqetUser {
 				this.API = 'https://testnet.musqet.tech/api/v1/';
 				break;
 		}
+	}
+
+	// getters
+
+	/**
+	 *
+	 * @returns {string} the current status
+	 */
+	getStatus() {
+		return this.status;
+	}
+
+	/**
+	 *
+	 * @returns {string} the current status
+	 */
+	getpublicKeyBase64URL() {
+		return this.publicKeyBase64URL;
+	}
+
+	/**
+	 *
+	 * @returns {boolean} true if the musqetUser is registered
+	 */
+	isRegistered() {
+		return this.registered;
+	}
+
+	/**
+	 *
+	 * @returns {boolean} true if the musqetUser is initialized
+	 */
+	isInitiated() {
+		return this.initiated;
 	}
 
 	// Public methods
