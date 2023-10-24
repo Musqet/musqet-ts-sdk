@@ -14,13 +14,13 @@ test('MusqetUser', async () => {
 			console.log(newUser.errors);
 		}
 	});
-	expect(newUser.initiated).toBe(false);
+	expect(newUser.isInitiated()).toBe(false);
 	const isInit = await newUser.signup(name, email, passphrase);
 	if (!isInit) console.log(newUser.errors);
 	expect(isInit).toBe(true);
 	const isBackedUp = await newUser.backup();
 	if (!isBackedUp) console.log(newUser.errors);
-	expect(newUser.initiated).toBe(true);
+	expect(newUser.isInitiated()).toBe(true);
 	expect(newUser.hasNode()).toBe(false);
 	// ! restore the user
 	const oldUser = new MusqetUser();
@@ -33,7 +33,7 @@ test('MusqetUser', async () => {
 	const isRestored = await oldUser.login(email, passphrase);
 	if (!isRestored) console.log(oldUser.errors);
 	expect(isRestored).toBe(true);
-	expect(oldUser.initiated).toBe(true);
+	expect(oldUser.isInitiated()).toBe(true);
 	expect(oldUser.hasNode()).toBe(false);
 	// ! Prices
 	// const price = await oldUser.getPrice('GBP');

@@ -26,7 +26,9 @@ export class MusqetUser {
 	// init properties
 	private initiated = false;
 	private publicKeyBase64URL = '';
-	private subscribeStatus = (status: string) => {};
+	private subscribeStatus = (status: string) => {
+		status;
+	};
 	private status = STATUS.READY;
 	private registered = false;
 	private settings: SettingsObject = {
@@ -562,6 +564,14 @@ export class MusqetUser {
 					{
 						entity: 'onchain',
 						action: 'read'
+					},
+					{
+						entity: 'peers',
+						action: 'read'
+					},
+					{
+						entity: 'peers',
+						action: 'write'
 					}
 				]
 			};
