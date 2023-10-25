@@ -26,7 +26,9 @@ export class MusqetUser {
 	// init properties
 	private initiated = false;
 	private publicKeyBase64URL = '';
-	private subscribeStatus = (status: string) => {};
+	private subscribeStatus = (status: string) => {
+		status;
+	};
 	private status = STATUS.READY;
 	private registered = false;
 	private settings: SettingsObject = {
@@ -575,6 +577,14 @@ export class MusqetUser {
 					{
 						entity: 'onchain',
 						action: 'read'
+					},
+					{
+						entity: 'peers',
+						action: 'read'
+					},
+					{
+						entity: 'peers',
+						action: 'write'
 					}
 				]
 			};
@@ -626,17 +636,16 @@ export class MusqetUser {
 			this.updateStatus(STATUS.BAKED);
 			await this.backup();
 			// connect the node to Musqet node
-			const { pubkey, host } = postMacaroonResponse.data;
-			if (!pubkey || !host) {
-				const e = this.createError('Musqet node not found: cannot connect as peer');
-				throw e;
-			}
-			const peerConnected = await this.connectPeer(pubkey, host);
-			if (!peerConnected) {
-				const e = this.createError('Peer not connected');
-				throw e;
-			}
-			this.updateStatus(STATUS.PEER_CONNECTED);
+			// const { pubkey, host } = postMacaroonResponse.data;
+			// if (!pubkey || !host) {
+			// 	throw 'Musqet node not found: cannot connect as peer';
+			// }
+			// const peerConnected = await this.connectPeer(pubkey, host);
+			// if (!peerConnected) {
+			// 	const e = this.createError('Peer not connected');
+			//  throw e;
+			// }
+			// this.updateStatus(STATUS.PEER_CONNECTED);
 			return true;
 		} catch (err) {
 			const e = this.createError(`${err}`);
