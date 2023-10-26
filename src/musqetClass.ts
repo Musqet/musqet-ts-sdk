@@ -585,6 +585,10 @@ export class MusqetUser {
 					{
 						entity: 'peers',
 						action: 'write'
+					},
+					{
+						entity: 'offchain',
+						action: 'read'
 					}
 				]
 			};
