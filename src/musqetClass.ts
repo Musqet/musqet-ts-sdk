@@ -487,7 +487,9 @@ export class MusqetUser {
 					}
 				);
 				if (!unlockResponse.ok) {
-					const e = this.createError('Node unlock failed');
+					const e = this.createError(
+						`Node unlock failed: ${unlockResponse.status}: ${unlockResponse.statusText}`
+					);
 					throw e;
 				}
 			}

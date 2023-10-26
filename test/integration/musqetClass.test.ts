@@ -10,28 +10,19 @@ test('MusqetUser', async () => {
 	const newUser = new MusqetUser('dev');
 	newUser.subscribe((status: string) => {
 		console.log(status);
-		if (status === 'Error') {
-			console.log(newUser.errors);
-		}
 	});
 	expect(newUser.isInitiated()).toBe(false);
 	const isInit = await newUser.signup(name, email, passphrase);
-	if (!isInit) console.log(newUser.errors);
 	expect(isInit).toBe(true);
 	const isBackedUp = await newUser.backup();
-	if (!isBackedUp) console.log(newUser.errors);
 	expect(newUser.isInitiated()).toBe(true);
 	expect(newUser.hasNode()).toBe(false);
 	// ! restore the user
 	const oldUser = new MusqetUser();
 	oldUser.subscribe((status: string) => {
 		console.log(status);
-		if (status === 'Error') {
-			console.log(oldUser.errors);
-		}
 	});
 	const isRestored = await oldUser.login(email, passphrase);
-	if (!isRestored) console.log(oldUser.errors);
 	expect(isRestored).toBe(true);
 	expect(oldUser.isInitiated()).toBe(true);
 	expect(oldUser.hasNode()).toBe(false);
@@ -53,9 +44,7 @@ test('MusqetUser', async () => {
 	};
 	// todo check if saving the user is necessary
 	const saved = await oldUser.backup();
-	if (!saved) console.log('Not saved!', oldUser.errors);
 	const isRegistered = await oldUser.registerBusiness(businessForm);
-	if (!isRegistered) console.log(oldUser.errors);
 	expect(isRegistered).toBe(true);
 	// ! Wait for the business to be approved
 	let bizApproved = false;
@@ -68,7 +57,6 @@ test('MusqetUser', async () => {
 	}
 	// ! Initiate the node
 	const isNodeInit = await oldUser.initNode();
-	if (!isNodeInit) console.log(oldUser.errors);
 	expect(isNodeInit).toBe(true);
 	// ! Get the node status
 	expect(oldUser.hasNode()).toBe(true);
@@ -76,7 +64,6 @@ test('MusqetUser', async () => {
 	console.log(node);
 	// ! New nodes don't start sync so need a restart
 	const isNodeRestart = await oldUser.stopNode();
-	if (!isNodeRestart) console.log(oldUser.errors);
 	expect(isNodeRestart).toBe(true);
 	// ! Wait for the node to be ready
 	let nodeReadyAgain = false;
