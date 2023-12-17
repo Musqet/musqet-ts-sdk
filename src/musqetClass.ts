@@ -190,11 +190,11 @@ export class MusqetUser {
 	 */
 	async login(email: string, passphrase: string): Promise<boolean> {
 		this.updateStatus(STATUS.LOGIN);
-		if (!email) {
+		if (!email || typeof email !== 'string') {
 			const e = this.createError('Email is required');
 			throw e;
 		}
-		if (!passphrase) {
+		if (!passphrase || typeof passphrase !== 'string') {
 			const e = this.createError('Passphrase is required');
 			throw e;
 		}
