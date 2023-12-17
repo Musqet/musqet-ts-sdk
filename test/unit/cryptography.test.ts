@@ -28,4 +28,6 @@ test('crypto', async () => {
 	// // Bob decrypts
 	// const decrypted2 = await decrypt(bobPrivateKey, alicePublicKey, encrypted2);
 	// expect(message).toEqual(decrypted2);
+	// pause for 20ms
+	await new Promise((resolve) => setTimeout(resolve, 20));
 });

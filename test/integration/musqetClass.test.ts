@@ -27,9 +27,9 @@ test('MusqetUser', async () => {
 	expect(oldUser.isInitiated()).toBe(true);
 	expect(oldUser.hasNode()).toBe(false);
 	// ! Prices
-	// const price = await oldUser.getPrice('GBP');
-	// expect(price.symbol).toBe('£');
-	// expect(Number(price.price)).toBeGreaterThan(0);
+	const price = await oldUser.getPrice('GBP');
+	expect(price.symbol).toBe('£');
+	expect(Number(price.price)).toBeGreaterThan(0);
 	// ! register a new business
 	const businessForm = {
 		name,
