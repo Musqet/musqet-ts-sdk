@@ -102,6 +102,19 @@ export type StorageObject = {
 	nodeUrl: string;
 };
 
+export type BusinessObject = {
+	businessName: string; // Business name
+	businessId: string; // Business ID
+	businessPub: string; // Business public key
+	role: Role | null; // User's role
+	macaroon: string; // User's macaroon - only available to manager & merchant roles. Cashiers will be empty string
+	nodeId: string; // Business node ID
+	nodeUrl: string; // Business node URL
+	mnemonic: string; // Mnemonic seed phrase
+	encipheredSeed: string; // Enciphered seed
+	nodePassword: string; // Node password
+};
+
 export type SettingsObject = {
 	priv: Uint8Array; // User's private key
 	pub: Uint8Array; // User's public key
@@ -111,15 +124,8 @@ export type SettingsObject = {
 	challengeExpires: number; // Challenge expiration timestamp
 	bearerToken: string; // Bearer token for API calls
 	musqetPub: string; // Musqet public key
-	business: string; // Business name
-	businessPub: string; // Business public key
-	role: Role | null; // User's role
-	macaroon: string; // User's macaroon - only available to manager & merchant roles. Cashiers will be empty string
-	nodeId: string; // Business node ID
-	nodeUrl: string; // Business node URL
-	mnemonic: string; // Mnemonic seed phrase
-	encipheredSeed: string; // Enciphered seed
-	nodePassword: string; // Node password
+	businesses: BusinessObject[]; // Array of businesses
+	currentBusiness: number; // Index of Current business
 };
 
 export type SettingsValue = string | Uint8Array | number;
