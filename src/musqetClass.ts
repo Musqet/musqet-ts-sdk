@@ -40,15 +40,21 @@ export class MusqetUser {
 		challengeExpires: 0,
 		bearerToken: '',
 		musqetPub: '',
-		business: '',
-		businessPub: '',
-		role: null,
-		macaroon: '',
-		nodeId: '',
-		nodeUrl: '',
-		mnemonic: '',
-		encipheredSeed: '',
-		nodePassword: ''
+		businesses: [
+			{
+				businessName: '',
+				businessId: '',
+				nodeId: '',
+				nodeUrl: '',
+				nodePassword: '',
+				macaroon: '',
+				encipheredSeed: '',
+				mnemonic: '',
+				businessPub: '',
+				role: null
+			}
+		],
+		currentBusiness: 0
 	};
 	// TODO: update with API URL
 	private API = 'http://localhost:3000/api/v1/';
@@ -331,7 +337,7 @@ export class MusqetUser {
 	}
 
 	hasNode() {
-		return !!this.settings.nodeId;
+		return !!this.settings.businesses[this.settings.currentBusiness].nodeId;
 	}
 
 	/**
@@ -411,7 +417,7 @@ export class MusqetUser {
 				throw e;
 			}
 			const { businessId } = json.data;
-			this.settings.business = businessId;
+			this.settings.businesses[this.settings.currentBusiness].businessId = businessId;
 			this.updateStatus(STATUS.BUSINESS_REGISTERED);
 			this.updateStatus(STATUS.READY);
 			return true;
@@ -439,7 +445,7 @@ export class MusqetUser {
 	 * // }
 	 */
 	async getNodeStatus(): Promise<NodeStatusResponse> {
-		if (!this.settings.business) {
+		if (!this.settings.businesses[this.settings.currentBusiness]) {
 			const e = this.createError('Business is required: cannot get node status');
 			throw e;
 		}
@@ -451,11 +457,14 @@ export class MusqetUser {
 					throw e;
 				}
 			}
-			const r = await fetch(`${this.API}b/${this.settings.business}/ln/status`, {
-				headers: {
-					Authorization: `Bearer ${this.settings.bearerToken}`
+			const r = await fetch(
+				`${this.API}b/${this.settings.businesses[this.settings.currentBusiness]}/ln/status`,
+				{
+					headers: {
+						Authorization: `Bearer ${this.settings.bearerToken}`
+					}
 				}
-			});
+			);
 			const json: APIError | APINodeStatus = await r.json();
 			if (isAPIError(json)) {
 				const e = this.createError(json.message);
@@ -463,25 +472,27 @@ export class MusqetUser {
 			}
 			// set a flag to backup if settings are changed
 			let settingsChanged = false;
-			if (!this.settings.nodeUrl) {
-				this.settings.nodeUrl = json.data.nodeUrl;
+			if (!this.settings.businesses[this.settings.currentBusiness].nodeUrl) {
+				this.settings.businesses[this.settings.currentBusiness].nodeUrl = json.data.nodeUrl;
 				settingsChanged = true;
 			}
-			if (!this.settings.nodeId) {
-				this.settings.nodeId = json.data.nodeId;
+			if (!this.settings.businesses[this.settings.currentBusiness].nodeId) {
+				this.settings.businesses[this.settings.currentBusiness].nodeId = json.data.nodeId;
 				settingsChanged = true;
 			}
 			// if the node is waiting unlock, unlock it
 			if (json.data.status === NODE_STATUS.WAITING_UNLOCK) {
 				const unlockResponse = await fetch(
-					`https://${this.settings.nodeUrl}:8080/v1/unlockwallet`,
+					`https://${
+						this.settings.businesses[this.settings.currentBusiness].nodeUrl
+					}:8080/v1/unlockwallet`,
 					{
 						method: 'POST',
 						headers: {
 							'Content-Type': 'application/json'
 						},
 						body: JSON.stringify({
-							wallet_password: this.settings.nodePassword,
+							wallet_password: this.settings.businesses[this.settings.currentBusiness].nodePassword,
 							stateless_init: true
 						})
 					}
@@ -512,33 +523,49 @@ export class MusqetUser {
 	 */
 	async initNode(): Promise<boolean> {
 		// check there is a node
-		if (!this.settings.nodeId || !this.settings.nodeUrl) {
+		if (
+			!this.settings.businesses[this.settings.currentBusiness].nodeId ||
+			!this.settings.businesses[this.settings.currentBusiness].nodeUrl
+		) {
 			const e = this.createError('No node found to initialize');
 			throw e;
 		}
 		try {
 			this.updateStatus(STATUS.INIT_NODE);
-			const response4 = await fetch(`https://${this.settings.nodeUrl}:8080/v1/genseed`);
+			const response4 = await fetch(
+				`https://${this.settings.businesses[this.settings.currentBusiness].nodeUrl}:8080/v1/genseed`
+			);
 			const json4: {
 				cipher_seed_mnemonic: string[];
 				enciphered_seed: string;
 			} = await response4.json();
-			this.settings.mnemonic = json4.cipher_seed_mnemonic.join(' ');
-			this.settings.encipheredSeed = json4.enciphered_seed;
-			this.settings.nodePassword = base64.encode(randomBytes(32));
-			const response5 = await fetch(`https://${this.settings.nodeUrl}:8080/v1/initwallet`, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json'
-				},
-				body: JSON.stringify({
-					wallet_password: this.settings.nodePassword,
-					cipher_seed_mnemonic: json4.cipher_seed_mnemonic,
-					stateless_init: true
-				})
-			});
+			this.settings.businesses[this.settings.currentBusiness].mnemonic =
+				json4.cipher_seed_mnemonic.join(' ');
+			this.settings.businesses[this.settings.currentBusiness].encipheredSeed =
+				json4.enciphered_seed;
+			this.settings.businesses[this.settings.currentBusiness].nodePassword = base64.encode(
+				randomBytes(32)
+			);
+			const response5 = await fetch(
+				`https://${
+					this.settings.businesses[this.settings.currentBusiness].nodeUrl
+				}:8080/v1/initwallet`,
+				{
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json'
+					},
+					body: JSON.stringify({
+						wallet_password: this.settings.businesses[this.settings.currentBusiness].nodePassword,
+						cipher_seed_mnemonic: json4.cipher_seed_mnemonic,
+						stateless_init: true
+					})
+				}
+			);
 			const json5: { admin_macaroon: string } = await response5.json();
-			this.settings.macaroon = bytesToHex(base64.decode(json5.admin_macaroon));
+			this.settings.businesses[this.settings.currentBusiness].macaroon = bytesToHex(
+				base64.decode(json5.admin_macaroon)
+			);
 			this.updateStatus(STATUS.NODE_INITIALIZED);
 			this.updateStatus(STATUS.SAVING);
 			const saved = await this.backup();
@@ -600,14 +627,20 @@ export class MusqetUser {
 				counter++;
 				// pause
 				await new Promise((resolve) => setTimeout(resolve, 1000));
-				const response6 = await fetch(`https://${this.settings.nodeUrl}:8080/v1/macaroon`, {
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json',
-						'Grpc-Metadata-Macaroon': this.settings.macaroon
-					},
-					body: JSON.stringify(invoicePermissions)
-				});
+				const response6 = await fetch(
+					`https://${
+						this.settings.businesses[this.settings.currentBusiness].nodeUrl
+					}:8080/v1/macaroon`,
+					{
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json',
+							'Grpc-Metadata-Macaroon':
+								this.settings.businesses[this.settings.currentBusiness].macaroon
+						},
+						body: JSON.stringify(invoicePermissions)
+					}
+				);
 				const json6: { macaroon: string } = await response6.json();
 				macaroon = json6.macaroon ?? '';
 				if (counter > 15 && !macaroon) {
@@ -616,16 +649,19 @@ export class MusqetUser {
 				}
 			}
 			// post the macaroon to the server
-			const postMacaroon = await fetch(`${this.API}b/${this.settings.business}/ln/macaroon`, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					Authorization: `Bearer ${this.settings.bearerToken}`
-				},
-				body: JSON.stringify({
-					macaroon
-				})
-			});
+			const postMacaroon = await fetch(
+				`${this.API}b/${this.settings.businesses[this.settings.currentBusiness]}/ln/macaroon`,
+				{
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: `Bearer ${this.settings.bearerToken}`
+					},
+					body: JSON.stringify({
+						macaroon
+					})
+				}
+			);
 			const postMacaroonResponse:
 				| APIError
 				| {
@@ -670,18 +706,24 @@ export class MusqetUser {
 	 */
 	async stopNode(): Promise<boolean> {
 		// check there is a node
-		if (!this.settings.nodeId || !this.settings.nodeUrl) {
+		if (
+			!this.settings.businesses[this.settings.currentBusiness].nodeId ||
+			!this.settings.businesses[this.settings.currentBusiness].nodeUrl
+		) {
 			const e = this.createError('No node found to stop');
 			throw e;
 		}
 		try {
 			this.updateStatus(STATUS.STOPPING_NODE);
-			const response = await fetch(`${this.API}b/${this.settings.business}/ln/stopNode`, {
-				method: 'GET',
-				headers: {
-					Authorization: `Bearer ${this.settings.bearerToken}`
+			const response = await fetch(
+				`${this.API}b/${this.settings.businesses[this.settings.currentBusiness]}/ln/stopNode`,
+				{
+					method: 'GET',
+					headers: {
+						Authorization: `Bearer ${this.settings.bearerToken}`
+					}
 				}
-			});
+			);
 			const json: APIError | { ok: true } = await response.json();
 			if (isAPIError(json)) {
 				const e = this.createError(json.message);
@@ -705,18 +747,24 @@ export class MusqetUser {
 	 */
 	async startNode(): Promise<boolean> {
 		// check there is a node
-		if (!this.settings.nodeId || !this.settings.nodeUrl) {
+		if (
+			!this.settings.businesses[this.settings.currentBusiness].nodeId ||
+			!this.settings.businesses[this.settings.currentBusiness].nodeUrl
+		) {
 			const e = this.createError(`No node found to start`);
 			throw e;
 		}
 		try {
 			this.updateStatus(STATUS.STARTING_NODE);
-			const response = await fetch(`${this.API}b/${this.settings.business}/ln/startNode`, {
-				method: 'GET',
-				headers: {
-					Authorization: `Bearer ${this.settings.bearerToken}`
+			const response = await fetch(
+				`${this.API}b/${this.settings.businesses[this.settings.currentBusiness]}/ln/startNode`,
+				{
+					method: 'GET',
+					headers: {
+						Authorization: `Bearer ${this.settings.bearerToken}`
+					}
 				}
-			});
+			);
 			const json: APIError | { ok: true } = await response.json();
 			if (isAPIError(json)) {
 				const e = this.createError(json.message);
@@ -1074,20 +1122,24 @@ export class MusqetUser {
 
 	private async connectPeer(pubkey: string, host: string): Promise<boolean> {
 		try {
-			const peerConnectRequest = await fetch(`https://${this.settings.nodeUrl}:8080/v1/peers`, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					'Grpc-Metadata-Macaroon': this.settings.macaroon
-				},
-				body: JSON.stringify({
-					addr: {
-						pubkey,
-						host
+			const peerConnectRequest = await fetch(
+				`https://${this.settings.businesses[this.settings.currentBusiness].nodeUrl}:8080/v1/peers`,
+				{
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						'Grpc-Metadata-Macaroon':
+							this.settings.businesses[this.settings.currentBusiness].macaroon
 					},
-					perm: true
-				})
-			});
+					body: JSON.stringify({
+						addr: {
+							pubkey,
+							host
+						},
+						perm: true
+					})
+				}
+			);
 			if (!peerConnectRequest.ok) {
 				const e = this.createError('Peer connection failed');
 				throw e;
