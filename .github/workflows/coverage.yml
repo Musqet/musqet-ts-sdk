@@ -24,7 +24,7 @@ jobs:
           cache: 'npm'
       - run: npm ci
       - run: npm run compile
-      - run: npm test:unit
+      - run: npm run test:unit
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
